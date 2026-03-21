@@ -1,0 +1,6 @@
+{
+  "buildCommand": "echo done",
+  "outputDirectory": ".",
+  "framework": null,
+  "devCommand": null
+}
