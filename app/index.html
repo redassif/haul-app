@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Haul — Shop Any Look</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:#EDE8E0;font-family:'DM Sans',sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh}
+    ::-webkit-scrollbar{width:0}
+    @keyframes bounce{from{transform:translateY(0)}to{transform:translateY(-8px)}}
+    @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState} = React;
+const C = {bg:"#F8F4EF",dark:"#1A1209",card:"#FFFFFF",accent:"#E8442C",accentLight:"#E8442C18",muted:"#9A8F82",border:"#E8E0D5",tag:"#F0EBE3"};
+const FD="'Playfair Display',serif", FB="'DM Sans',sans-serif";
+
+const HAULS=[
+  {id:1,creator:"Zara M.",handle:"@zarastyles",av:"Z",avc:"#E8442C",title:"Spring Minimalist Haul ✨",views:"128K",likes:"14.2K",thumb:"🌸",bg:"linear-gradient(135deg,#F9E4D4,#F0D5C8)",items:[
+    {id:1,name:"Linen Oversized Blazer",brand:"Zara",price:89.99,color:"#8B7355",checked:true},
+    {id:2,name:"Wide Leg Trousers",brand:"H&M",price:49.99,color:"#4A4A4A",checked:true},
+    {id:3,name:"Strappy Sandals",brand:"ASOS",price:39.99,color:"#C4A882",checked:false},
+    {id:4,name:"Mini Shoulder Bag",brand:"Mango",price:59.99,color:"#1A1A1A",checked:true}
+  ]},
+  {id:2,creator:"Mia Chen",handle:"@miafashion",av:"M",avc:"#2D6A4F",title:"Y2K Comeback Pieces 🌀",views:"89K",likes:"9.8K",thumb:"⭐",bg:"linear-gradient(135deg,#D4E8F9,#C8D5F0)",items:[
+    {id:5,name:"Low Rise Cargo Pants",brand:"Urban Outfitters",price:79.99,color:"#556B2F",checked:true},
+    {id:6,name:"Butterfly Crop Top",brand:"Shein",price:19.99,color:"#FF69B4",checked:true},
+    {id:7,name:"Platform Sneakers",brand:"Nike",price:120.00,color:"#E0E0E0",checked:true},
+    {id:8,name:"Tinted Sunglasses",brand:"ASOS",price:24.99,color:"#2C2C2C",checked:false}
+  ]},
+  {id:3,creator:"Leila K.",handle:"@leilaootd",av:"L",avc:"#7B2D8B",title:"Office to Out — Work Fits 💼",views:"204K",likes:"22.1K",thumb:"💼",bg:"linear-gradient(135deg,#E8D4F9,#D8C8F0)",items:[
+    {id:9,name:"Tailored Midi Skirt",brand:"& Other Stories",price:99.99,color:"#2C3E50",checked:true},
+    {id:10,name:"Silk Button Blouse",brand:"Mango",price:69.99,color:"#F5F5DC",checked:true},
+    {id:11,name:"Block Heel Mules",brand:"Zara",price:79.99,color:"#8B4513",checked:true},
+    {id:12,name:"Structured Tote",brand:"Nordstrom",price:149.00,color:"#000000",checked:false}
+  ]}
+];
+
+function Av({l,c,s=36}){
+  return <div style={{width:s,height:s,borderRadius:"50%",background:c||"#E8442C",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:s*0.4,color:"#fff",fontFamily:FB,flexShrink:0,border:"2px solid white",boxShadow:"0 2px 8px rgba(0,0,0,0.15)"}}>{l}</div>;
+}
+
+function Dot({col}){return <div style={{width:14,height:14,borderRadius:"50%",background:col,border:"1.5px solid #E8E0D5",flexShrink:0}}/>;}
+
+function FeedScreen({onOpen,onSnap,onProfile}){
+  return(
+    <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+      <div style={{padding:"16px 16px 0",flexShrink:0}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+          <div style={{fontSize:26,fontWeight:800,color:C.dark,fontFamily:FD,letterSpacing:-1}}>haul<span style={{color:C.accent}}>.</span></div>
+          <button style={{padding:"7px 14px",borderRadius:20,background:C.accent,color:"white",border:"none",fontFamily:FB,fontWeight:700,fontSize:12,cursor:"pointer"}}>+ Post Haul</button>
+        </div>
+        <div style={{fontSize:11,color:C.muted,fontFamily:FB,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:12}}>Trending Hauls</div>
+      </div>
+      <div style={{flex:1,overflowY:"auto",padding:"0 16px 100px"}}>
+        {HAULS.map(h=>{
+          const total=h.items.filter(i=>i.checked).reduce((s,i)=>s+i.price,0);
+          return(
+            <div key={h.id} onClick={()=>onOpen(h)} style={{background:C.card,borderRadius:20,overflow:"hidden",border:`1px solid ${C.border}`,marginBottom:18,boxShadow:"0 4px 24px rgba(26,18,9,0.06)",cursor:"pointer"}}>
+              <div style={{height:190,background:h.bg,display:"flex",alignItems:"center",justifyContent:"center",position:"relative"}}>
+                <div style={{fontSize:60,opacity:0.5}}>{h.thumb}</div>
+                <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  <div style={{width:48,height:48,borderRadius:"50%",background:"rgba(255,255,255,0.9)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 4px 20px rgba(0,0,0,0.15)"}}>
+                    <div style={{width:0,height:0,borderTop:"9px solid transparent",borderBottom:"9px solid transparent",borderLeft:`14px solid ${C.accent}`,marginLeft:4}}/>
+                  </div>
+                </div>
+                <div style={{position:"absolute",bottom:10,left:10,right:10,display:"flex",justifyContent:"space-between"}}>
+                  <span style={{fontSize:11,color:"white",fontFamily:FB,fontWeight:600,background:"rgba(0,0,0,0.4)",padding:"3px 8px",borderRadius:20}}>▶ {h.views}</span>
+                  <span style={{fontSize:11,color:"white",fontFamily:FB,fontWeight:600,background:"rgba(0,0,0,0.4)",padding:"3px 8px",borderRadius:20}}>♥ {h.likes}</span>
+                </div>
+                <div style={{position:"absolute",top:10,right:10,background:C.accent,borderRadius:20,padding:"3px 10px",fontSize:11,color:"white",fontFamily:FB,fontWeight:700}}>✓ Verified</div>
+              </div>
+              <div style={{padding:14}}>
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+                  <Av l={h.av} c={h.avc}/>
+                  <div><div style={{fontWeight:700,fontSize:13,color:C.dark,fontFamily:FB}}>{h.creator}</div><div style={{fontSize:11,color:C.muted,fontFamily:FB}}>{h.handle}</div></div>
+                </div>
+                <div style={{fontSize:16,fontWeight:800,color:C.dark,fontFamily:FD,marginBottom:10,lineHeight:1.3}}>{h.title}</div>
+                <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
+                  {h.items.slice(0,3).map(item=>(
+                    <div key={item.id} style={{display:"flex",alignItems:"center",gap:5,background:C.tag,borderRadius:20,padding:"4px 10px",fontSize:11,color:C.dark,fontFamily:FB}}>
+                      <Dot col={item.color}/><span>{item.name.split(" ").slice(0,2).join(" ")}</span>
+                    </div>
+                  ))}
+                  {h.items.length>3&&<div style={{background:C.tag,borderRadius:20,padding:"4px 10px",fontSize:11,color:C.muted,fontFamily:FB}}>+{h.items.length-3} more</div>}
+                </div>
+                <div style={{display:"flex",gap:8}}>
+                  <button style={{flex:1,padding:10,borderRadius:12,background:C.accent,color:"white",border:"none",fontWeight:700,fontSize:12,fontFamily:FB,cursor:"pointer"}}>Buy Full Look · ${total.toFixed(0)}</button>
+                  <button style={{padding:"10px 12px",borderRadius:12,background:C.tag,color:C.dark,border:"none",fontWeight:600,fontSize:12,fontFamily:FB,cursor:"pointer"}}>Pick Items</button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function DetailScreen({haul,onBack,onCheckout}){
+  const [items,setItems]=useState(haul.items);
+  const selected=items.filter(i=>i.checked);
+  const total=selected.reduce((s,i)=>s+i.price,0);
+  const toggle=id=>setItems(items.map(i=>i.id===id?{...i,checked:!i.checked}:i));
+  return(
+    <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+      <div style={{height:220,background:haul.bg,position:"relative",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+        <div style={{fontSize:64,opacity:0.4}}>{haul.thumb}</div>
+        <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <div style={{width:54,height:54,borderRadius:"50%",background:"rgba(255,255,255,0.92)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 6px 24px rgba(0,0,0,0.15)"}}>
+            <div style={{width:0,height:0,borderTop:"10px solid transparent",borderBottom:"10px solid transparent",borderLeft:`16px solid ${C.accent}`,marginLeft:5}}/>
+          </div>
+        </div>
+        <button onClick={onBack} style={{position:"absolute",top:16,left:16,width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,0.9)",border:"none",fontSize:16,cursor:"pointer"}}>←</button>
+        <div style={{position:"absolute",top:16,right:16,background:C.accent,borderRadius:20,padding:"3px 10px",fontSize:11,color:"white",fontFamily:FB,fontWeight:700}}>✓ Verified</div>
+      </div>
+      <div style={{flex:1,overflowY:"auto",padding:"14px 16px 140px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
+          <Av l={haul.av} c={haul.avc}/>
+          <div style={{flex:1}}><div style={{fontWeight:700,fontSize:13,color:C.dark,fontFamily:FB}}>{haul.creator}</div><div style={{fontSize:11,color:C.muted,fontFamily:FB}}>{haul.handle}</div></div>
+          <div style={{fontSize:11,color:C.muted,fontFamily:FB}}>♥ {haul.likes}</div>
+        </div>
+        <div style={{fontSize:18,fontWeight:800,color:C.dark,fontFamily:FD,marginBottom:4,lineHeight:1.3}}>{haul.title}</div>
+        <div style={{fontSize:12,color:C.muted,fontFamily:FB,marginBottom:14}}>Select the pieces you want — or grab the full look.</div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+          <div style={{fontSize:11,fontWeight:700,color:C.dark,fontFamily:FB,textTransform:"uppercase",letterSpacing:1}}>Items in this haul</div>
+          <button onClick={()=>setItems(items.map(i=>({...i,checked:true})))} style={{fontSize:12,color:C.accent,fontFamily:FB,fontWeight:700,background:"none",border:"none",cursor:"pointer"}}>Select All</button>
+        </div>
+        {items.map(item=>(
+          <div key={item.id} onClick={()=>toggle(item.id)} style={{display:"flex",alignItems:"center",gap:10,background:item.checked?C.accentLight:C.tag,border:`1.5px solid ${item.checked?C.accent:C.border}`,borderRadius:14,padding:12,marginBottom:8,cursor:"pointer"}}>
+            <div style={{width:20,height:20,borderRadius:5,border:`2px solid ${item.checked?C.accent:C.border}`,background:item.checked?C.accent:"white",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+              {item.checked&&<span style={{color:"white",fontSize:12,fontWeight:700}}>✓</span>}
+            </div>
+            <Dot col={item.color}/>
+            <div style={{flex:1}}><div style={{fontWeight:700,fontSize:13,color:C.dark,fontFamily:FB}}>{item.name}</div><div style={{fontSize:11,color:C.muted,fontFamily:FB}}>{item.brand}</div></div>
+            <div style={{fontWeight:800,fontSize:14,color:C.dark,fontFamily:FB}}>${item.price.toFixed(2)}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{position:"absolute",bottom:0,left:0,right:0,background:"white",borderTop:`1px solid ${C.border}`,padding:"14px 16px 24px",boxShadow:"0 -8px 30px rgba(26,18,9,0.08)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+          <div style={{fontSize:12,color:C.muted,fontFamily:FB}}>{selected.length} item{selected.length!==1?"s":""} selected</div>
+          <div style={{fontSize:19,fontWeight:800,color:C.dark,fontFamily:FD}}>${total.toFixed(2)}</div>
+        </div>
+        <button onClick={()=>selected.length>0&&onCheckout(selected,total)} disabled={selected.length===0} style={{width:"100%",padding:14,borderRadius:14,border:"none",background:selected.length>0?C.accent:C.border,color:selected.length>0?"white":C.muted,fontWeight:800,fontSize:14,fontFamily:FB,cursor:selected.length>0?"pointer":"not-allowed"}}>
+          {selected.length>0?`Buy ${selected.length===haul.items.length?"Full Look":"Selected"} — 1 Checkout`:"Select items to buy"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SnapScreen({onBack}){
+  const [stage,setStage]=useState("upload");
+  const items=[
+    {id:1,name:"Cream Knit Sweater",brand:"Zara",price:59.99,color:"#F5F0E8",match:"98%"},
+    {id:2,name:"Straight Leg Jeans",brand:"Levi's",price:79.99,color:"#4A6FA5",match:"95%"},
+    {id:3,name:"White Leather Sneakers",brand:"Nike",price:110.00,color:"#E0E0E0",match:"91%"},
+    {id:4,name:"Gold Hoop Earrings",brand:"ASOS",price:18.99,color:"#C9A84C",match:"89%"},
+  ];
+  const total=items.reduce((s,i)=>s+i.price,0);
+  const handleUpload=()=>{setStage("analyzing");setTimeout(()=>setStage("result"),2200);};
+  return(
+    <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+      <div style={{padding:"16px 16px 0",flexShrink:0}}>
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
+          <button onClick={onBack} style={{width:36,height:36,borderRadius:"50%",border:`1px solid ${C.border}`,background:C.tag,fontSize:16,cursor:"pointer"}}>←</button>
+          <div>
+            <div style={{fontSize:17,fontWeight:800,color:C.dark,fontFamily:FD}}>Snap to Shop</div>
+            <div style={{fontSize:11,color:C.muted,fontFamily:FB}}>Upload any outfit — we'll find every piece</div>
+          </div>
+        </div>
+      </div>
+      <div style={{flex:1,overflowY:"auto",padding:"0 16px 120px"}}>
+        {stage==="upload"&&(
+          <div onClick={handleUpload} style={{border:`2px dashed ${C.border}`,borderRadius:20,padding:"44px 20px",textAlign:"center",cursor:"pointer",background:C.tag,marginBottom:16}}>
+            <div style={{fontSize:48,marginBottom:14}}>📸</div>
+            <div style={{fontSize:17,fontWeight:800,color:C.dark,fontFamily:FD,marginBottom:6}}>Upload an outfit photo</div>
+            <div style={{fontSize:13,color:C.muted,fontFamily:FB,lineHeight:1.6}}>Tap to upload a photo.<br/>We'll identify every piece and find where to buy it.</div>
+            <div style={{marginTop:18,display:"inline-block",background:C.accent,color:"white",padding:"10px 22px",borderRadius:20,fontFamily:FB,fontWeight:700,fontSize:13}}>Choose Photo</div>
+          </div>
+        )}
+        {stage==="analyzing"&&(
+          <div style={{textAlign:"center",padding:"50px 20px"}}>
+            <div style={{fontSize:56,marginBottom:16,display:"inline-block",animation:"spin 1s linear infinite"}}>🔍</div>
+            <div style={{fontSize:19,fontWeight:800,color:C.dark,fontFamily:FD,marginBottom:8}}>Analyzing outfit...</div>
+            <div style={{fontSize:13,color:C.muted,fontFamily:FB,lineHeight:1.8}}>Identifying clothing pieces<br/>Finding best matches across retailers<br/>Preparing your cart</div>
+            <div style={{marginTop:20,display:"flex",gap:6,justifyContent:"center"}}>
+              {[0,1,2].map(i=><div key={i} style={{width:8,height:8,borderRadius:"50%",background:C.accent,animation:`bounce 0.8s ease-in-out ${i*0.2}s infinite alternate`}}/>)}
+            </div>
+          </div>
+        )}
+        {stage==="result"&&(
+          <>
+            <div style={{background:"#E8F5E9",borderRadius:14,padding:"12px 14px",marginBottom:16,display:"flex",gap:10,alignItems:"center"}}>
+              <span style={{fontSize:18}}>✅</span>
+              <div><div style={{fontSize:13,fontWeight:700,color:"#2D6A4F",fontFamily:FB}}>4 items identified</div><div style={{fontSize:11,color:"#52B788",fontFamily:FB}}>All available · Ships separately</div></div>
+            </div>
+            {items.map(item=>(
+              <div key={item.id} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:12,marginBottom:8,display:"flex",alignItems:"center",gap:10}}>
+                <Dot col={item.color}/>
+                <div style={{flex:1}}><div style={{fontWeight:700,fontSize:13,color:C.dark,fontFamily:FB}}>{item.name}</div><div style={{fontSize:11,color:C.muted,fontFamily:FB}}>{item.brand} · <span style={{color:"#2D6A4F",fontWeight:600}}>{item.match} match</span></div></div>
+                <div style={{fontWeight:800,fontSize:14,color:C.dark,fontFamily:FB}}>${item.price.toFixed(2)}</div>
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+      {stage==="result"&&(
+        <div style={{position:"absolute",bottom:0,left:0,right:0,background:"white",borderTop:`1px solid ${C.border}`,padding:"14px 16px 24px",boxShadow:"0 -8px 30px rgba(26,18,9,0.08)"}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
+            <div style={{fontSize:12,color:C.muted,fontFamily:FB}}>4 items · 1 checkout</div>
+            <div style={{fontSize:19,fontWeight:800,color:C.dark,fontFamily:FD}}>${total.toFixed(2)}</div>
+          </div>
+          <button style={{width:"100%",padding:14,borderRadius:14,background:C.accent,color:"white",border:"none",fontWeight:800,fontSize:14,fontFamily:FB,cursor:"pointer"}}>Buy Full Outfit — 1 Checkout</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CheckoutScreen({items,total,onDone}){
+  const [stage,setStage]=useState("review");
+  const retailers=[...new Set(items.map(i=>i.brand))];
+  const handlePay=()=>{setStage("processing");setTimeout(()=>setStage("done"),2500);};
+  if(stage==="done") return(
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",padding:32,textAlign:"center"}}>
+      <div style={{fontSize:64,marginBottom:14}}>🎉</div>
+      <div style={{fontSize:24,fontWeight:800,color:C.dark,fontFamily:FD,marginBottom:8}}>Order Placed!</div>
+      <div style={{fontSize:13,color:C.muted,fontFamily:FB,lineHeight:1.8,marginBottom:20}}>Your {items.length} items have been ordered<br/>from {retailers.length} retailer{retailers.length>1?"s":""}.<br/>One payment. Multiple deliveries.</div>
+      <div style={{width:"100%",background:C.tag,borderRadius:16,padding:"14px 16px",marginBottom:18}}>
+        {retailers.map((r,i)=>(
+          <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:i<retailers.length-1?`1px solid ${C.border}`:"none"}}>
+            <span style={{fontSize:13,color:C.dark,fontFamily:FB}}>{r}</span>
+            <span style={{fontSize:12,color:"#2D6A4F",fontFamily:FB,fontWeight:600}}>✓ Confirmed</span>
+          </div>
+        ))}
+      </div>
+      <button onClick={onDone} style={{width:"100%",padding:14,borderRadius:14,background:C.accent,color:"white",border:"none",fontWeight:800,fontSize:14,fontFamily:FB,cursor:"pointer"}}>Back to Feed</button>
+    </div>
+  );
+  if(stage==="processing") return(
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",padding:32,textAlign:"center"}}>
+      <div style={{fontSize:56,marginBottom:16}}>⚡</div>
+      <div style={{fontSize:21,fontWeight:800,color:C.dark,fontFamily:FD,marginBottom:8}}>Processing order...</div>
+      <div style={{fontSize:13,color:C.muted,fontFamily:FB,lineHeight:1.8}}>Placing orders across {retailers.length} retailer{retailers.length>1?"s":""} simultaneously.<br/>You only pay once.</div>
+      <div style={{marginTop:20,display:"flex",gap:6}}>
+        {[0,1,2].map(i=><div key={i} style={{width:8,height:8,borderRadius:"50%",background:C.accent,animation:`bounce 0.8s ease-in-out ${i*0.2}s infinite alternate`}}/>)}
+      </div>
+    </div>
+  );
+  return(
+    <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+      <div style={{padding:"16px 16px 0",flexShrink:0}}>
+        <div style={{fontSize:17,fontWeight:800,color:C.dark,fontFamily:FD,marginBottom:14}}>Checkout</div>
+        <div style={{background:C.accentLight,border:`1px solid ${C.accent}`,borderRadius:14,padding:"10px 14px",marginBottom:16,fontSize:12,color:C.accent,fontFamily:FB,fontWeight:600}}>⚡ 1 payment · {retailers.length} retailers · ordered simultaneously</div>
+      </div>
+      <div style={{flex:1,overflowY:"auto",padding:"0 16px 150px"}}>
+        <div style={{fontSize:11,fontWeight:700,color:C.dark,fontFamily:FB,textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Order Summary</div>
+        {items.map(item=>(
+          <div key={item.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
+            <div style={{display:"flex",gap:8,alignItems:"center"}}><Dot col={item.color}/><div><div style={{fontSize:13,fontWeight:600,color:C.dark,fontFamily:FB}}>{item.name}</div><div style={{fontSize:11,color:C.muted,fontFamily:FB}}>{item.brand}</div></div></div>
+            <div style={{fontWeight:700,fontSize:13,color:C.dark,fontFamily:FB}}>${item.price.toFixed(2)}</div>
+          </div>
+        ))}
+        <div style={{marginTop:16,background:C.tag,borderRadius:14,padding:14}}>
+          <div style={{fontSize:11,fontWeight:700,color:C.dark,fontFamily:FB,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Payment</div>
+          <div style={{background:"white",borderRadius:10,padding:"10px 12px",border:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span style={{fontSize:13,color:C.dark,fontFamily:FB}}>•••• •••• •••• 4242</span>
+            <span style={{fontSize:18}}>💳</span>
+          </div>
+        </div>
+        <div style={{marginTop:12,background:C.tag,borderRadius:14,padding:14}}>
+          <div style={{fontSize:11,fontWeight:700,color:C.dark,fontFamily:FB,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Shipping</div>
+          <div style={{fontSize:13,color:C.dark,fontFamily:FB}}>123 Main St, Apt 4B</div>
+          <div style={{fontSize:11,color:C.muted,fontFamily:FB}}>New York, NY 10001</div>
+        </div>
+      </div>
+      <div style={{position:"absolute",bottom:0,left:0,right:0,background:"white",borderTop:`1px solid ${C.border}`,padding:"14px 16px 24px",boxShadow:"0 -8px 30px rgba(26,18,9,0.08)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
+          <div style={{fontSize:12,color:C.muted,fontFamily:FB}}>Total · {items.length} items</div>
+          <div style={{fontSize:20,fontWeight:800,color:C.dark,fontFamily:FD}}>${total.toFixed(2)}</div>
+        </div>
+        <button onClick={handlePay} style={{width:"100%",padding:14,borderRadius:14,background:C.accent,color:"white",border:"none",fontWeight:800,fontSize:14,fontFamily:FB,cursor:"pointer",boxShadow:`0 6px 20px ${C.accent}44`}}>Place Order Now →</button>
+      </div>
+    </div>
+  );
+}
+
+function ProfileScreen(){
+  return(
+    <div style={{padding:"16px 16px 100px",overflowY:"auto",height:"100%"}}>
+      <div style={{fontSize:17,fontWeight:800,color:C.dark,fontFamily:FD,marginBottom:18}}>Profile</div>
+      <div style={{textAlign:"center",marginBottom:20}}>
+        <div style={{width:68,height:68,borderRadius:"50%",background:C.accent,display:"flex",alignItems:"center",justifyContent:"center",fontSize:26,fontWeight:800,color:"white",fontFamily:FB,margin:"0 auto 10px"}}>Y</div>
+        <div style={{fontSize:17,fontWeight:800,color:C.dark,fontFamily:FD}}>Your Profile</div>
+        <div style={{fontSize:12,color:C.muted,fontFamily:FB}}>Fashion enthusiast</div>
+        <div style={{display:"inline-block",marginTop:6,padding:"4px 12px",background:C.accentLight,borderRadius:20,fontSize:11,color:C.accent,fontWeight:700,fontFamily:FB}}>✓ Verified Creator</div>
+      </div>
+      <div style={{display:"flex",gap:10,marginBottom:20}}>
+        {[{l:"Hauls",v:"12"},{l:"Purchased",v:"$2.4K"},{l:"Followers",v:"8.2K"}].map(s=>(
+          <div key={s.l} style={{flex:1,background:C.tag,borderRadius:14,padding:"12px 6px",textAlign:"center"}}>
+            <div style={{fontSize:18,fontWeight:800,color:C.accent,fontFamily:FD}}>{s.v}</div>
+            <div style={{fontSize:10,color:C.muted,fontFamily:FB}}>{s.l}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{fontSize:11,fontWeight:700,color:C.dark,fontFamily:FB,textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Recent Orders</div>
+      {["Spring Minimalist Haul · $199","Y2K Pieces · $220","Snap Purchase · $269"].map((o,i)=>(
+        <div key={i} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:12,marginBottom:8,display:"flex",justifyContent:"space-between"}}>
+          <span style={{fontSize:12,color:C.dark,fontFamily:FB}}>{o.split("·")[0]}</span>
+          <span style={{fontSize:12,fontWeight:700,color:C.accent,fontFamily:FB}}>{o.split("·")[1]}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Nav({screen,set}){
+  const tabs=[{id:"feed",icon:"▶",label:"Feed"},{id:"snap",icon:"📸",label:"Snap"},{id:"profile",icon:"👤",label:"Profile"}];
+  return(
+    <div style={{position:"absolute",bottom:0,left:0,right:0,background:"white",borderTop:`1px solid ${C.border}`,display:"flex",padding:"8px 0 18px"}}>
+      {tabs.map(t=>(
+        <button key={t.id} onClick={()=>set(t.id)} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2,border:"none",background:"none",cursor:"pointer",color:screen===t.id?C.accent:C.muted}}>
+          <span style={{fontSize:18}}>{t.icon}</span>
+          <span style={{fontSize:10,fontFamily:FB,fontWeight:screen===t.id?700:500}}>{t.label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function App(){
+  const [screen,setScreen]=useState("feed");
+  const [haul,setHaul]=useState(null);
+  const [checkout,setCheckout]=useState(null);
+  const showNav=screen==="feed"||screen==="snap"||screen==="profile";
+  return(
+    <div style={{width:390,height:780,background:C.bg,borderRadius:44,border:"10px solid #2A2010",boxShadow:"0 40px 100px rgba(0,0,0,0.35)",position:"relative",overflow:"hidden",display:"flex",flexDirection:"column"}}>
+      <div style={{position:"absolute",top:0,left:"50%",transform:"translateX(-50%)",width:110,height:26,background:"#2A2010",borderRadius:"0 0 16px 16px",zIndex:100}}/>
+      <div style={{display:"flex",justifyContent:"space-between",padding:"32px 18px 0",fontSize:10,color:C.muted,fontFamily:FB,fontWeight:600,flexShrink:0}}>
+        <span>9:41</span><span>●●●○ 🔋</span>
+      </div>
+      <div style={{flex:1,position:"relative",overflow:"hidden"}}>
+        {screen==="feed"&&!haul&&<FeedScreen onOpen={h=>{setHaul(h);}} onSnap={()=>setScreen("snap")} onProfile={()=>setScreen("profile")}/>}
+        {screen==="feed"&&haul&&!checkout&&<DetailScreen haul={haul} onBack={()=>setHaul(null)} onCheckout={(items,total)=>{setCheckout({items,total});setScreen("checkout");}}/>}
+        {screen==="checkout"&&checkout&&<CheckoutScreen items={checkout.items} total={checkout.total} onDone={()=>{setCheckout(null);setHaul(null);setScreen("feed");}}/>}
+        {screen==="snap"&&<SnapScreen onBack={()=>setScreen("feed")}/>}
+        {screen==="profile"&&<ProfileScreen/>}
+      </div>
+      {showNav&&<Nav screen={screen} set={setScreen}/>}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
