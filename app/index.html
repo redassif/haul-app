@@ -65,8 +65,11 @@ function FeedScreen({onOpen,onSnap,onProfile}){
           const total=h.items.filter(i=>i.checked).reduce((s,i)=>s+i.price,0);
           return(
             <div key={h.id} onClick={()=>onOpen(h)} style={{background:C.card,borderRadius:20,overflow:"hidden",border:`1px solid ${C.border}`,marginBottom:18,boxShadow:"0 4px 24px rgba(26,18,9,0.06)",cursor:"pointer"}}>
-              <div style={{height:190,background:h.bg,display:"flex",alignItems:"center",justifyContent:"center",position:"relative"}}>
-                <div style={{fontSize:60,opacity:0.5}}>{h.thumb}</div>
+              <div style={{height:190,background:h.bg,display:"flex",alignItems:"center",justifyContent:"center",position:"relative",overflow:"hidden"}}>
+                {h.id===1
+                  ? <video src="haul.mp4" style={{width:"100%",height:"100%",objectFit:"cover",position:"absolute",inset:0}} autoPlay muted loop playsInline/>
+                  : <div style={{fontSize:60,opacity:0.5}}>{h.thumb}</div>
+                }
                 <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
                   <div style={{width:48,height:48,borderRadius:"50%",background:"rgba(255,255,255,0.9)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 4px 20px rgba(0,0,0,0.15)"}}>
                     <div style={{width:0,height:0,borderTop:"9px solid transparent",borderBottom:"9px solid transparent",borderLeft:`14px solid ${C.accent}`,marginLeft:4}}/>
@@ -112,8 +115,11 @@ function DetailScreen({haul,onBack,onCheckout}){
   const toggle=id=>setItems(items.map(i=>i.id===id?{...i,checked:!i.checked}:i));
   return(
     <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
-      <div style={{height:220,background:haul.bg,position:"relative",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-        <div style={{fontSize:64,opacity:0.4}}>{haul.thumb}</div>
+      <div style={{height:220,background:haul.bg,position:"relative",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,overflow:"hidden"}}>
+        {haul.id===1
+          ? <video src="haul.mp4" style={{width:"100%",height:"100%",objectFit:"cover",position:"absolute",inset:0}} autoPlay muted loop playsInline/>
+          : <div style={{fontSize:64,opacity:0.4}}>{haul.thumb}</div>
+        }
         <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
           <div style={{width:54,height:54,borderRadius:"50%",background:"rgba(255,255,255,0.92)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 6px 24px rgba(0,0,0,0.15)"}}>
             <div style={{width:0,height:0,borderTop:"10px solid transparent",borderBottom:"10px solid transparent",borderLeft:`16px solid ${C.accent}`,marginLeft:5}}/>
