@@ -1,367 +1,1047 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Haul — Shop Any Look</title>
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <meta name="description" content="Discover fashion hauls from verified creators. Shop full outfits or individual pieces in one single checkout."/>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    *{box-sizing:border-box;margin:0;padding:0}
-    body{background:#EDE8E0;font-family:'DM Sans',sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh}
-    ::-webkit-scrollbar{width:0}
-    @keyframes bounce{from{transform:translateY(0)}to{transform:translateY(-8px)}}
-    @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+    :root {
+      --bg: #0C0A08;
+      --surface: #141210;
+      --card: #1A1714;
+      --accent: #E8442C;
+      --gold: #C9A84C;
+      --cream: #F0E8DC;
+      --muted: #6B6259;
+      --border: #2A2520;
+      --text: #EDE5D8;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      overflow-x: hidden;
+    }
+
+    /* Grain overlay */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 1000;
+      opacity: 0.4;
+    }
+
+    /* NAV */
+    nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      padding: 20px 48px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      backdrop-filter: blur(20px);
+      background: rgba(12,10,8,0.7);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .logo {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.5px;
+    }
+
+    .logo span { color: var(--accent); }
+
+    .nav-links {
+      display: flex;
+      gap: 32px;
+      align-items: center;
+    }
+
+    .nav-links a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+
+    .nav-links a:hover { color: var(--text); }
+
+    .btn-primary {
+      background: var(--accent);
+      color: white;
+      border: none;
+      padding: 10px 22px;
+      border-radius: 100px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: 'DM Sans', sans-serif;
+      text-decoration: none;
+      display: inline-block;
+      transition: all 0.2s;
+      box-shadow: 0 4px 20px rgba(232,68,44,0.3);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 30px rgba(232,68,44,0.4);
+    }
+
+    .btn-secondary {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 10px 22px;
+      border-radius: 100px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: 'DM Sans', sans-serif;
+      text-decoration: none;
+      display: inline-block;
+      transition: all 0.2s;
+    }
+
+    .btn-secondary:hover {
+      border-color: var(--muted);
+      background: var(--card);
+    }
+
+    /* HERO */
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 120px 24px 80px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero-glow {
+      position: absolute;
+      top: 20%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 600px;
+      height: 600px;
+      background: radial-gradient(circle, rgba(232,68,44,0.12) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .hero-glow-2 {
+      position: absolute;
+      bottom: 10%;
+      right: 10%;
+      width: 400px;
+      height: 400px;
+      background: radial-gradient(circle, rgba(201,168,76,0.08) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      padding: 6px 16px;
+      border-radius: 100px;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 28px;
+      animation: fadeUp 0.6s ease both;
+    }
+
+    .badge-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.8); }
+    }
+
+    .hero h1 {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: clamp(52px, 8vw, 100px);
+      font-weight: 300;
+      line-height: 1.0;
+      letter-spacing: -2px;
+      color: var(--text);
+      max-width: 900px;
+      animation: fadeUp 0.6s 0.1s ease both;
+    }
+
+    .hero h1 em {
+      font-style: italic;
+      color: var(--accent);
+    }
+
+    .hero h1 .gold { color: var(--gold); }
+
+    .hero-sub {
+      font-size: 17px;
+      color: var(--muted);
+      max-width: 520px;
+      line-height: 1.7;
+      margin: 24px auto 40px;
+      font-weight: 400;
+      animation: fadeUp 0.6s 0.2s ease both;
+    }
+
+    .hero-cta {
+      display: flex;
+      gap: 14px;
+      justify-content: center;
+      flex-wrap: wrap;
+      animation: fadeUp 0.6s 0.3s ease both;
+    }
+
+    .hero-stats {
+      display: flex;
+      gap: 48px;
+      justify-content: center;
+      margin-top: 72px;
+      animation: fadeUp 0.6s 0.4s ease both;
+    }
+
+    .stat {
+      text-align: center;
+    }
+
+    .stat-num {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 36px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 4px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .stat-divider {
+      width: 1px;
+      background: var(--border);
+      height: 40px;
+      align-self: center;
+    }
+
+    .stat-sep {
+      font-size: 18px;
+      color: var(--accent);
+      align-self: center;
+      opacity: 0.7;
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(24px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* PHONE MOCKUP */
+    .phone-section {
+      padding: 80px 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      position: relative;
+    }
+
+    .section-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 3px;
+      color: var(--accent);
+      margin-bottom: 16px;
+    }
+
+    .section-title {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: clamp(36px, 5vw, 60px);
+      font-weight: 300;
+      text-align: center;
+      line-height: 1.1;
+      letter-spacing: -1px;
+      max-width: 700px;
+      margin-bottom: 16px;
+    }
+
+    .section-title em { font-style: italic; color: var(--gold); }
+
+    .section-sub {
+      font-size: 15px;
+      color: var(--muted);
+      text-align: center;
+      max-width: 480px;
+      line-height: 1.7;
+      margin-bottom: 60px;
+    }
+
+    .phone-frame {
+      width: 280px;
+      height: 570px;
+      background: var(--card);
+      border-radius: 36px;
+      border: 8px solid #252220;
+      box-shadow: 0 60px 120px rgba(0,0,0,0.6), 0 0 0 1px #352F2A, inset 0 1px 0 rgba(255,255,255,0.05);
+      position: relative;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    .phone-notch {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 90px;
+      height: 22px;
+      background: #252220;
+      border-radius: 0 0 14px 14px;
+      z-index: 10;
+    }
+
+    .phone-screen {
+      width: 100%;
+      height: 100%;
+      background: #F8F4EF;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .phone-status {
+      display: flex;
+      justify-content: space-between;
+      padding: 28px 14px 0;
+      font-size: 9px;
+      color: #9A8F82;
+      font-family: 'DM Sans', sans-serif;
+      font-weight: 600;
+    }
+
+    .phone-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 14px 0;
+    }
+
+    .phone-logo {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 20px;
+      font-weight: 700;
+      color: #1A1209;
+    }
+
+    .phone-logo span { color: #E8442C; }
+
+    .phone-post-btn {
+      background: #E8442C;
+      color: white;
+      border: none;
+      padding: "5px 10px";
+      border-radius: 20px;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 4px 10px;
+    }
+
+    .phone-label {
+      font-size: 9px;
+      color: #9A8F82;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      padding: 10px 14px 6px;
+    }
+
+    .phone-card {
+      margin: 0 10px 8px;
+      background: white;
+      border-radius: 14px;
+      overflow: hidden;
+      border: 1px solid #E8E0D5;
+    }
+
+    .phone-card-thumb {
+      height: 90px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 32px;
+      position: relative;
+    }
+
+    .phone-card-body {
+      padding: 8px 10px;
+    }
+
+    .phone-card-title {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 13px;
+      font-weight: 700;
+      color: #1A1209;
+      margin-bottom: 6px;
+    }
+
+    .phone-card-btn {
+      width: 100%;
+      padding: 7px;
+      border-radius: 8px;
+      background: #E8442C;
+      color: white;
+      border: none;
+      font-size: 10px;
+      font-weight: 700;
+      text-align: center;
+    }
+
+    /* HOW IT WORKS */
+    .how-section {
+      padding: 80px 24px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .steps-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 2px;
+      margin-top: 60px;
+    }
+
+    .step {
+      background: var(--card);
+      padding: 40px 32px;
+      border: 1px solid var(--border);
+      position: relative;
+      transition: background 0.2s;
+    }
+
+    .step:first-child { border-radius: 20px 0 0 20px; }
+    .step:last-child { border-radius: 0 20px 20px 0; }
+
+    .step:hover { background: #1F1C18; }
+
+    .step-num {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 64px;
+      font-weight: 300;
+      color: var(--border);
+      line-height: 1;
+      margin-bottom: 16px;
+    }
+
+    .step-icon {
+      font-size: 32px;
+      margin-bottom: 16px;
+    }
+
+    .step-title {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 24px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 10px;
+    }
+
+    .step-desc {
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+
+    /* FOR WHO */
+    .who-section {
+      padding: 80px 24px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .who-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+      margin-top: 60px;
+    }
+
+    .who-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 36px;
+      position: relative;
+      overflow: hidden;
+      transition: border-color 0.2s;
+    }
+
+    .who-card:hover { border-color: var(--muted); }
+
+    .who-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+    }
+
+    .who-card.creator::before { background: var(--accent); }
+    .who-card.shopper::before { background: var(--gold); }
+
+    .who-tag {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 100px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 20px;
+    }
+
+    .who-card.creator .who-tag { background: rgba(232,68,44,0.15); color: var(--accent); }
+    .who-card.shopper .who-tag { background: rgba(201,168,76,0.15); color: var(--gold); }
+
+    .who-title {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 30px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 12px;
+      line-height: 1.2;
+    }
+
+    .who-desc {
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.7;
+      margin-bottom: 24px;
+    }
+
+    .who-perks {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .who-perks li {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      color: var(--text);
+    }
+
+    .perk-check {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      flex-shrink: 0;
+    }
+
+    .who-card.creator .perk-check { background: rgba(232,68,44,0.2); color: var(--accent); }
+    .who-card.shopper .perk-check { background: rgba(201,168,76,0.2); color: var(--gold); }
+
+    /* CTA SECTION */
+    .cta-section {
+      padding: 100px 24px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .cta-section::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 800px;
+      height: 400px;
+      background: radial-gradient(ellipse, rgba(232,68,44,0.08) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .cta-section h2 {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: clamp(42px, 6vw, 80px);
+      font-weight: 300;
+      letter-spacing: -2px;
+      line-height: 1.05;
+      margin-bottom: 20px;
+    }
+
+    .cta-section h2 em { font-style: italic; color: var(--accent); }
+
+    .cta-section p {
+      font-size: 16px;
+      color: var(--muted);
+      max-width: 480px;
+      margin: 0 auto 40px;
+      line-height: 1.7;
+    }
+
+    .cta-btns {
+      display: flex;
+      gap: 14px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .btn-large {
+      padding: 14px 32px;
+      font-size: 15px;
+      border-radius: 100px;
+    }
+
+    /* FOOTER */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 32px 48px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .footer-logo {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .footer-logo span { color: var(--accent); }
+
+    .footer-right {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    /* DIVIDER */
+    .divider {
+      width: 1px;
+      height: 60px;
+      background: var(--border);
+      margin: 0 auto;
+    }
+
+    /* MARQUEE */
+    .marquee-section {
+      padding: 40px 0;
+      overflow: hidden;
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .marquee-track {
+      display: flex;
+      gap: 48px;
+      animation: marquee 20s linear infinite;
+      white-space: nowrap;
+    }
+
+    .marquee-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 13px;
+      color: var(--muted);
+      font-weight: 500;
+      flex-shrink: 0;
+    }
+
+    .marquee-dot {
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: var(--accent);
+      flex-shrink: 0;
+    }
+
+    @keyframes marquee {
+      from { transform: translateX(0); }
+      to { transform: translateX(-50%); }
+    }
+
+    /* RESPONSIVE */
+    @media (max-width: 768px) {
+      nav { padding: 16px 20px; }
+      .nav-links { display: none; }
+      .steps-grid { grid-template-columns: 1fr; }
+      .step:first-child { border-radius: 20px 20px 0 0; }
+      .step:last-child { border-radius: 0 0 20px 20px; }
+      .who-grid { grid-template-columns: 1fr; }
+      footer { flex-direction: column; gap: 12px; text-align: center; }
+      .hero-stats { gap: 24px; }
+    }
+
+    /* SCROLL ANIMATIONS */
+    .reveal {
+      opacity: 1;
+      transform: translateY(0);
+      transition: opacity 0.7s ease, transform 0.7s ease;
+    }
+
+    .reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
   </style>
 </head>
 <body>
-<div id="root"></div>
-<script type="text/babel">
-const {useState} = React;
-const C = {bg:"#F8F4EF",dark:"#1A1209",card:"#FFFFFF",accent:"#E8442C",accentLight:"#E8442C18",muted:"#9A8F82",border:"#E8E0D5",tag:"#F0EBE3"};
-const FD="'Playfair Display',serif", FB="'DM Sans',sans-serif";
 
-const HAULS=[
-  {id:1,creator:"Zara M.",handle:"@zarastyles",av:"Z",avc:"#E8442C",title:"Spring Minimalist Haul ✨",views:"128K",likes:"14.2K",thumb:"🌸",bg:"linear-gradient(135deg,#F9E4D4,#F0D5C8)",items:[
-    {id:1,name:"Linen Oversized Blazer",brand:"Zara",price:89.99,color:"#8B7355",checked:true},
-    {id:2,name:"Wide Leg Trousers",brand:"H&M",price:49.99,color:"#4A4A4A",checked:true},
-    {id:3,name:"Strappy Sandals",brand:"ASOS",price:39.99,color:"#C4A882",checked:false},
-    {id:4,name:"Mini Shoulder Bag",brand:"Mango",price:59.99,color:"#1A1A1A",checked:true}
-  ]},
-  {id:2,creator:"Mia Chen",handle:"@miafashion",av:"M",avc:"#2D6A4F",title:"Y2K Comeback Pieces 🌀",views:"89K",likes:"9.8K",thumb:"⭐",bg:"linear-gradient(135deg,#D4E8F9,#C8D5F0)",items:[
-    {id:5,name:"Low Rise Cargo Pants",brand:"Urban Outfitters",price:79.99,color:"#556B2F",checked:true},
-    {id:6,name:"Butterfly Crop Top",brand:"Shein",price:19.99,color:"#FF69B4",checked:true},
-    {id:7,name:"Platform Sneakers",brand:"Nike",price:120.00,color:"#E0E0E0",checked:true},
-    {id:8,name:"Tinted Sunglasses",brand:"ASOS",price:24.99,color:"#2C2C2C",checked:false}
-  ]},
-  {id:3,creator:"Leila K.",handle:"@leilaootd",av:"L",avc:"#7B2D8B",title:"Office to Out — Work Fits 💼",views:"204K",likes:"22.1K",thumb:"💼",bg:"linear-gradient(135deg,#E8D4F9,#D8C8F0)",items:[
-    {id:9,name:"Tailored Midi Skirt",brand:"& Other Stories",price:99.99,color:"#2C3E50",checked:true},
-    {id:10,name:"Silk Button Blouse",brand:"Mango",price:69.99,color:"#F5F5DC",checked:true},
-    {id:11,name:"Block Heel Mules",brand:"Zara",price:79.99,color:"#8B4513",checked:true},
-    {id:12,name:"Structured Tote",brand:"Nordstrom",price:149.00,color:"#000000",checked:false}
-  ]}
-];
+  <!-- NAV -->
+  <nav>
+    <div class="logo">haul<span>.</span></div>
+    <div class="nav-links">
+      <a href="#how">How it works</a>
+      <a href="#who">For creators</a>
+      <a href="#prototype">Preview</a>
+    </div>
+    <a href="https://haul-app-dusky.vercel.app" target="_blank" class="btn-primary">Try the App →</a>
+  </nav>
 
-function Av({l,c,s=36}){
-  return <div style={{width:s,height:s,borderRadius:"50%",background:c||"#E8442C",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:s*0.4,color:"#fff",fontFamily:FB,flexShrink:0,border:"2px solid white",boxShadow:"0 2px 8px rgba(0,0,0,0.15)"}}>{l}</div>;
-}
+  <!-- HERO -->
+  <section class="hero">
+    <div class="hero-glow"></div>
+    <div class="hero-glow-2"></div>
 
-function Dot({col}){return <div style={{width:14,height:14,borderRadius:"50%",background:col,border:"1.5px solid #E8E0D5",flexShrink:0}}/>;}
+    <div class="badge">
+      <div class="badge-dot"></div>
+      Now in early access
+    </div>
 
-function FeedScreen({onOpen,onSnap,onProfile}){
-  return(
-    <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
-      <div style={{padding:"16px 16px 0",flexShrink:0}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-          <div style={{fontSize:26,fontWeight:800,color:C.dark,fontFamily:FD,letterSpacing:-1}}>haul<span style={{color:C.accent}}>.</span></div>
-          <button style={{padding:"7px 14px",borderRadius:20,background:C.accent,color:"white",border:"none",fontFamily:FB,fontWeight:700,fontSize:12,cursor:"pointer"}}>+ Post Haul</button>
-        </div>
-        <div style={{fontSize:11,color:C.muted,fontFamily:FB,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:12}}>Trending Hauls</div>
+    <h1>
+      See it.<br>
+      <em>Love it.</em><br>
+      <span class="gold">Own it.</span>
+    </h1>
+
+    <p class="hero-sub">
+      Discover fashion hauls from verified creators. Shop any outfit — or every piece — in a single checkout. No tabs, no searching, no friction.
+    </p>
+
+    <div class="hero-cta">
+      <a href="https://haul-app-dusky.vercel.app" target="_blank" class="btn-primary btn-large">Try the Prototype →</a>
+    </div>
+
+    <div class="hero-stats">
+      <div class="stat">
+        <div class="stat-num" style="font-family:'DM Sans',sans-serif;font-weight:800">∞</div>
+        <div class="stat-label">Retailers</div>
       </div>
-      <div style={{flex:1,overflowY:"auto",padding:"0 16px 100px"}}>
-        {HAULS.map(h=>{
-          const total=h.items.filter(i=>i.checked).reduce((s,i)=>s+i.price,0);
-          return(
-            <div key={h.id} onClick={()=>onOpen(h)} style={{background:C.card,borderRadius:20,overflow:"hidden",border:`1px solid ${C.border}`,marginBottom:18,boxShadow:"0 4px 24px rgba(26,18,9,0.06)",cursor:"pointer"}}>
-              <div style={{height:190,background:h.bg,display:"flex",alignItems:"center",justifyContent:"center",position:"relative"}}>
-                <div style={{fontSize:60,opacity:0.5}}>{h.thumb}</div>
-                <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                  <div style={{width:48,height:48,borderRadius:"50%",background:"rgba(255,255,255,0.9)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 4px 20px rgba(0,0,0,0.15)"}}>
-                    <div style={{width:0,height:0,borderTop:"9px solid transparent",borderBottom:"9px solid transparent",borderLeft:`14px solid ${C.accent}`,marginLeft:4}}/>
-                  </div>
-                </div>
-                <div style={{position:"absolute",bottom:10,left:10,right:10,display:"flex",justifyContent:"space-between"}}>
-                  <span style={{fontSize:11,color:"white",fontFamily:FB,fontWeight:600,background:"rgba(0,0,0,0.4)",padding:"3px 8px",borderRadius:20}}>▶ {h.views}</span>
-                  <span style={{fontSize:11,color:"white",fontFamily:FB,fontWeight:600,background:"rgba(0,0,0,0.4)",padding:"3px 8px",borderRadius:20}}>♥ {h.likes}</span>
-                </div>
-                <div style={{position:"absolute",top:10,right:10,background:C.accent,borderRadius:20,padding:"3px 10px",fontSize:11,color:"white",fontFamily:FB,fontWeight:700}}>✓ Verified</div>
+      <div class="stat-sep">✦</div>
+      <div class="stat">
+        <div class="stat-num" style="font-family:'DM Sans',sans-serif;font-weight:800">0</div>
+        <div class="stat-label">Friction</div>
+      </div>
+      <div class="stat-sep">✦</div>
+      <div class="stat">
+        <div class="stat-num" style="font-family:'DM Sans',sans-serif;font-weight:800">1</div>
+        <div class="stat-label">Checkout</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- MARQUEE -->
+  <div class="marquee-section">
+    <div class="marquee-track">
+      <div class="marquee-item"><div class="marquee-dot"></div>Snap any outfit</div>
+      <div class="marquee-item"><div class="marquee-dot"></div>Verified creators</div>
+      <div class="marquee-item"><div class="marquee-dot"></div>One checkout</div>
+      <div class="marquee-item"><div class="marquee-dot"></div>AI item detection</div>
+      <div class="marquee-item"><div class="marquee-dot"></div>Shop the look</div>
+      <div class="marquee-item"><div class="marquee-dot"></div>Earn commissions</div>
+      <div class="marquee-item"><div class="marquee-dot"></div>Multiple retailers</div>
+      <div class="marquee-item"><div class="marquee-dot"></div>Shoppable videos</div>
+      <!-- repeat for seamless loop -->
+      <div class="marquee-item"><div class="marquee-dot"></div>Snap any outfit</div>
+      <div class="marquee-item"><div class="marquee-dot"></div>Verified creators</div>
+      <div class="marquee-item"><div class="marquee-dot"></div>One checkout</div>
+      <div class="marquee-item"><div class="marquee-dot"></div>AI item detection</div>
+      <div class="marquee-item"><div class="marquee-dot"></div>Shop the look</div>
+      <div class="marquee-item"><div class="marquee-dot"></div>Earn commissions</div>
+      <div class="marquee-item"><div class="marquee-dot"></div>Multiple retailers</div>
+      <div class="marquee-item"><div class="marquee-dot"></div>Shoppable videos</div>
+    </div>
+  </div>
+
+  <!-- HOW IT WORKS -->
+  <section class="how-section" id="how">
+    <div style="text-align:center" >
+      <div class="section-label">How it works</div>
+      <h2 class="section-title">Three steps.<br><em>One checkout.</em></h2>
+      <p class="section-sub">From discovering a look to owning every piece — in under a minute.</p>
+    </div>
+
+    <div class="steps-grid">
+      <div class="step">
+        <div class="step-num">01</div>
+        <div class="step-icon">🎬</div>
+        <div class="step-title">Watch the haul</div>
+        <div class="step-desc">Browse verified creator haul videos. Every piece they're wearing is tagged and shoppable directly in the feed.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">02</div>
+        <div class="step-icon">✓</div>
+        <div class="step-title">Pick your pieces</div>
+        <div class="step-desc">Tap the full outfit or select individual pieces. Mix and match across multiple hauls. Your cart updates in real time.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">03</div>
+        <div class="step-icon">⚡</div>
+        <div class="step-title">Buy everything at once</div>
+        <div class="step-desc">One payment. Multiple retailers. All ordered simultaneously. No redirects, no repeated checkouts, no wasted time.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PHONE PREVIEW -->
+  <section class="phone-section" id="prototype">
+    <div class="section-label">Live prototype</div>
+    <h2 class="section-title" style="margin-bottom:8px">See it in action</h2>
+    <p class="section-sub">A working prototype — tap through every screen, browse hauls, and experience the one-checkout flow firsthand.</p>
+
+    <div style="display:flex;gap:32px;align-items:center;flex-wrap:wrap;justify-content:center">
+
+      <!-- Phone 1 — Feed -->
+      <div class="phone-frame">
+        <div class="phone-notch"></div>
+        <div class="phone-screen">
+          <div class="phone-status"><span>9:41</span><span>●●●○ 🔋</span></div>
+          <div class="phone-header">
+            <div class="phone-logo">haul<span>.</span></div>
+            <div class="phone-post-btn" style="background:#E8442C;color:white;border:none;padding:4px 10px;border-radius:20px;font-size:10px;font-weight:700">+ Post Haul</div>
+          </div>
+          <div class="phone-label">Trending Hauls</div>
+          <div class="phone-card">
+            <div class="phone-card-thumb" style="background:linear-gradient(135deg,#F9E4D4,#F0D5C8)">
+              🌸
+              <div style="position:absolute;top:6px;right:6px;background:#E8442C;color:white;font-size:8px;font-weight:700;padding:2px 6px;border-radius:10px">✓ Verified</div>
+            </div>
+            <div class="phone-card-body">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
+                <div style="width:20px;height:20px;border-radius:50%;background:#E8442C;display:flex;align-items:center;justify-content:center;color:white;font-size:9px;font-weight:800">Z</div>
+                <div style="font-size:10px;font-weight:700;color:#1A1209">Zara M.</div>
               </div>
-              <div style={{padding:14}}>
-                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-                  <Av l={h.av} c={h.avc}/>
-                  <div><div style={{fontWeight:700,fontSize:13,color:C.dark,fontFamily:FB}}>{h.creator}</div><div style={{fontSize:11,color:C.muted,fontFamily:FB}}>{h.handle}</div></div>
-                </div>
-                <div style={{fontSize:16,fontWeight:800,color:C.dark,fontFamily:FD,marginBottom:10,lineHeight:1.3}}>{h.title}</div>
-                <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
-                  {h.items.slice(0,3).map(item=>(
-                    <div key={item.id} style={{display:"flex",alignItems:"center",gap:5,background:C.tag,borderRadius:20,padding:"4px 10px",fontSize:11,color:C.dark,fontFamily:FB}}>
-                      <Dot col={item.color}/><span>{item.name.split(" ").slice(0,2).join(" ")}</span>
-                    </div>
-                  ))}
-                  {h.items.length>3&&<div style={{background:C.tag,borderRadius:20,padding:"4px 10px",fontSize:11,color:C.muted,fontFamily:FB}}>+{h.items.length-3} more</div>}
-                </div>
-                <div style={{display:"flex",gap:8}}>
-                  <button style={{flex:1,padding:10,borderRadius:12,background:C.accent,color:"white",border:"none",fontWeight:700,fontSize:12,fontFamily:FB,cursor:"pointer"}}>Buy Full Look · ${total.toFixed(0)}</button>
-                  <button style={{padding:"10px 12px",borderRadius:12,background:C.tag,color:C.dark,border:"none",fontWeight:600,fontSize:12,fontFamily:FB,cursor:"pointer"}}>Pick Items</button>
-                </div>
+              <div class="phone-card-title">Spring Minimalist Haul ✨</div>
+              <div class="phone-card-btn">Buy Full Look · $199</div>
+            </div>
+          </div>
+          <div class="phone-card">
+            <div class="phone-card-thumb" style="background:linear-gradient(135deg,#D4E8F9,#C8D5F0)">
+              ⭐
+              <div style="position:absolute;top:6px;right:6px;background:#E8442C;color:white;font-size:8px;font-weight:700;padding:2px 6px;border-radius:10px">✓ Verified</div>
+            </div>
+            <div class="phone-card-body">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
+                <div style="width:20px;height:20px;border-radius:50%;background:#2D6A4F;display:flex;align-items:center;justify-content:center;color:white;font-size:9px;font-weight:800">M</div>
+                <div style="font-size:10px;font-weight:700;color:#1A1209">Mia Chen</div>
+              </div>
+              <div class="phone-card-title">Y2K Comeback Pieces 🌀</div>
+              <div class="phone-card-btn">Buy Full Look · $244</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Center text -->
+      <div style="max-width:300px;text-align:center">
+        <div style="font-family:'Cormorant Garamond',serif;font-size:42px;font-weight:300;line-height:1.1;letter-spacing:-1px;margin-bottom:16px">The feed that <em style="color:#C9A84C">pays</em> creators</div>
+        <p style="font-size:14px;color:var(--muted);line-height:1.7;margin-bottom:24px">Every view is a potential purchase. Every purchase earns the creator a commission. No brand deals needed.</p>
+        <a href="https://haul-app-dusky.vercel.app" target="_blank" class="btn-primary">Open Prototype →</a>
+      </div>
+
+      <!-- Phone 2 — Haul Detail -->
+      <div class="phone-frame">
+        <div class="phone-notch"></div>
+        <div class="phone-screen" style="position:relative">
+          <div class="phone-status"><span>9:41</span><span>●●●○ 🔋</span></div>
+
+          <!-- Video area -->
+          <div style="height:130px;background:linear-gradient(135deg,#E8D4F9,#D8C8F0);display:flex;align-items:center;justify-content:center;position:relative;flex-shrink:0">
+            <div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%">
+              <div style="width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,0.92);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,0.15)">
+                <div style="width:0;height:0;border-top:8px solid transparent;border-bottom:8px solid transparent;border-left:12px solid #E8442C;margin-left:3px"></div>
               </div>
             </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function DetailScreen({haul,onBack,onCheckout}){
-  const [items,setItems]=useState(haul.items);
-  const selected=items.filter(i=>i.checked);
-  const total=selected.reduce((s,i)=>s+i.price,0);
-  const toggle=id=>setItems(items.map(i=>i.id===id?{...i,checked:!i.checked}:i));
-  return(
-    <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
-      <div style={{height:220,background:haul.bg,position:"relative",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-        <div style={{fontSize:64,opacity:0.4}}>{haul.thumb}</div>
-        <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
-          <div style={{width:54,height:54,borderRadius:"50%",background:"rgba(255,255,255,0.92)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 6px 24px rgba(0,0,0,0.15)"}}>
-            <div style={{width:0,height:0,borderTop:"10px solid transparent",borderBottom:"10px solid transparent",borderLeft:`16px solid ${C.accent}`,marginLeft:5}}/>
+            <div style="position:absolute;top:8px;left:8px;width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.9);display:flex;align-items:center;justify-content:center;font-size:12px">←</div>
+            <div style="position:absolute;top:8px;right:8px;background:#E8442C;color:white;font-size:8px;font-weight:700;padding:2px 7px;border-radius:10px">✓ Verified</div>
           </div>
-        </div>
-        <button onClick={onBack} style={{position:"absolute",top:16,left:16,width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,0.9)",border:"none",fontSize:16,cursor:"pointer"}}>←</button>
-        <div style={{position:"absolute",top:16,right:16,background:C.accent,borderRadius:20,padding:"3px 10px",fontSize:11,color:"white",fontFamily:FB,fontWeight:700}}>✓ Verified</div>
-      </div>
-      <div style={{flex:1,overflowY:"auto",padding:"14px 16px 140px"}}>
-        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
-          <Av l={haul.av} c={haul.avc}/>
-          <div style={{flex:1}}><div style={{fontWeight:700,fontSize:13,color:C.dark,fontFamily:FB}}>{haul.creator}</div><div style={{fontSize:11,color:C.muted,fontFamily:FB}}>{haul.handle}</div></div>
-          <div style={{fontSize:11,color:C.muted,fontFamily:FB}}>♥ {haul.likes}</div>
-        </div>
-        <div style={{fontSize:18,fontWeight:800,color:C.dark,fontFamily:FD,marginBottom:4,lineHeight:1.3}}>{haul.title}</div>
-        <div style={{fontSize:12,color:C.muted,fontFamily:FB,marginBottom:14}}>Select the pieces you want — or grab the full look.</div>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-          <div style={{fontSize:11,fontWeight:700,color:C.dark,fontFamily:FB,textTransform:"uppercase",letterSpacing:1}}>Items in this haul</div>
-          <button onClick={()=>setItems(items.map(i=>({...i,checked:true})))} style={{fontSize:12,color:C.accent,fontFamily:FB,fontWeight:700,background:"none",border:"none",cursor:"pointer"}}>Select All</button>
-        </div>
-        {items.map(item=>(
-          <div key={item.id} onClick={()=>toggle(item.id)} style={{display:"flex",alignItems:"center",gap:10,background:item.checked?C.accentLight:C.tag,border:`1.5px solid ${item.checked?C.accent:C.border}`,borderRadius:14,padding:12,marginBottom:8,cursor:"pointer"}}>
-            <div style={{width:20,height:20,borderRadius:5,border:`2px solid ${item.checked?C.accent:C.border}`,background:item.checked?C.accent:"white",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-              {item.checked&&<span style={{color:"white",fontSize:12,fontWeight:700}}>✓</span>}
+
+          <!-- Creator info -->
+          <div style="padding:8px 10px 4px;display:flex;align-items:center;gap:7px">
+            <div style="width:24px;height:24px;border-radius:50%;background:#7B2D8B;display:flex;align-items:center;justify-content:center;color:white;font-size:10px;font-weight:800;flex-shrink:0">L</div>
+            <div style="flex:1">
+              <div style="font-size:11px;font-weight:700;color:#1A1209">Leila K.</div>
+              <div style="font-size:9px;color:#9A8F82">@leilaootd</div>
             </div>
-            <Dot col={item.color}/>
-            <div style={{flex:1}}><div style={{fontWeight:700,fontSize:13,color:C.dark,fontFamily:FB}}>{item.name}</div><div style={{fontSize:11,color:C.muted,fontFamily:FB}}>{item.brand}</div></div>
-            <div style={{fontWeight:800,fontSize:14,color:C.dark,fontFamily:FB}}>${item.price.toFixed(2)}</div>
+            <div style="font-size:9px;color:#9A8F82">♥ 22.1K</div>
           </div>
-        ))}
-      </div>
-      <div style={{position:"absolute",bottom:0,left:0,right:0,background:"white",borderTop:`1px solid ${C.border}`,padding:"14px 16px 24px",boxShadow:"0 -8px 30px rgba(26,18,9,0.08)"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-          <div style={{fontSize:12,color:C.muted,fontFamily:FB}}>{selected.length} item{selected.length!==1?"s":""} selected</div>
-          <div style={{fontSize:19,fontWeight:800,color:C.dark,fontFamily:FD}}>${total.toFixed(2)}</div>
-        </div>
-        <button onClick={()=>selected.length>0&&onCheckout(selected,total)} disabled={selected.length===0} style={{width:"100%",padding:14,borderRadius:14,border:"none",background:selected.length>0?C.accent:C.border,color:selected.length>0?"white":C.muted,fontWeight:800,fontSize:14,fontFamily:FB,cursor:selected.length>0?"pointer":"not-allowed"}}>
-          {selected.length>0?`Buy ${selected.length===haul.items.length?"Full Look":"Selected"} — 1 Checkout`:"Select items to buy"}
-        </button>
-      </div>
-    </div>
-  );
-}
 
-function SnapScreen({onBack}){
-  const [stage,setStage]=useState("upload");
-  const items=[
-    {id:1,name:"Cream Knit Sweater",brand:"Zara",price:59.99,color:"#F5F0E8",match:"98%"},
-    {id:2,name:"Straight Leg Jeans",brand:"Levi's",price:79.99,color:"#4A6FA5",match:"95%"},
-    {id:3,name:"White Leather Sneakers",brand:"Nike",price:110.00,color:"#E0E0E0",match:"91%"},
-    {id:4,name:"Gold Hoop Earrings",brand:"ASOS",price:18.99,color:"#C9A84C",match:"89%"},
-  ];
-  const total=items.reduce((s,i)=>s+i.price,0);
-  const handleUpload=()=>{setStage("analyzing");setTimeout(()=>setStage("result"),2200);};
-  return(
-    <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
-      <div style={{padding:"16px 16px 0",flexShrink:0}}>
-        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
-          <button onClick={onBack} style={{width:36,height:36,borderRadius:"50%",border:`1px solid ${C.border}`,background:C.tag,fontSize:16,cursor:"pointer"}}>←</button>
-          <div>
-            <div style={{fontSize:17,fontWeight:800,color:C.dark,fontFamily:FD}}>Snap to Shop</div>
-            <div style={{fontSize:11,color:C.muted,fontFamily:FB}}>Upload any outfit — we'll find every piece</div>
+          <!-- Title -->
+          <div style="padding:0 10px 2px;font-family:'Cormorant Garamond',serif;font-size:14px;font-weight:700;color:#1A1209;line-height:1.2">Office to Out — Work Fits 💼</div>
+          <div style="padding:0 10px 6px;font-size:9px;color:#9A8F82">Select the pieces you want — or grab the full look.</div>
+
+          <!-- Items label -->
+          <div style="padding:0 10px 5px;display:flex;justify-content:space-between;align-items:center">
+            <div style="font-size:8px;font-weight:700;color:#1A1209;text-transform:uppercase;letter-spacing:1px">Items in this haul</div>
+            <div style="font-size:9px;font-weight:700;color:#E8442C">Select All</div>
           </div>
-        </div>
-      </div>
-      <div style={{flex:1,overflowY:"auto",padding:"0 16px 120px"}}>
-        {stage==="upload"&&(
-          <div onClick={handleUpload} style={{border:`2px dashed ${C.border}`,borderRadius:20,padding:"44px 20px",textAlign:"center",cursor:"pointer",background:C.tag,marginBottom:16}}>
-            <div style={{fontSize:48,marginBottom:14}}>📸</div>
-            <div style={{fontSize:17,fontWeight:800,color:C.dark,fontFamily:FD,marginBottom:6}}>Upload an outfit photo</div>
-            <div style={{fontSize:13,color:C.muted,fontFamily:FB,lineHeight:1.6}}>Tap to upload a photo.<br/>We'll identify every piece and find where to buy it.</div>
-            <div style={{marginTop:18,display:"inline-block",background:C.accent,color:"white",padding:"10px 22px",borderRadius:20,fontFamily:FB,fontWeight:700,fontSize:13}}>Choose Photo</div>
+
+          <!-- Item 1 — checked -->
+          <div style="margin:0 8px 4px;background:#E8442C18;border:1.5px solid #E8442C;border-radius:10px;padding:7px 9px;display:flex;align-items:center;gap:7px">
+            <div style="width:16px;height:16px;border-radius:4px;background:#E8442C;display:flex;align-items:center;justify-content:center;flex-shrink:0"><span style="color:white;font-size:9px;font-weight:700">✓</span></div>
+            <div style="width:10px;height:10px;border-radius:50%;background:#2C3E50;flex-shrink:0"></div>
+            <div style="flex:1"><div style="font-size:10px;font-weight:700;color:#1A1209">Tailored Midi Skirt</div><div style="font-size:8px;color:#9A8F82">& Other Stories</div></div>
+            <div style="font-size:10px;font-weight:800;color:#1A1209">$99.99</div>
           </div>
-        )}
-        {stage==="analyzing"&&(
-          <div style={{textAlign:"center",padding:"50px 20px"}}>
-            <div style={{fontSize:56,marginBottom:16,display:"inline-block",animation:"spin 1s linear infinite"}}>🔍</div>
-            <div style={{fontSize:19,fontWeight:800,color:C.dark,fontFamily:FD,marginBottom:8}}>Analyzing outfit...</div>
-            <div style={{fontSize:13,color:C.muted,fontFamily:FB,lineHeight:1.8}}>Identifying clothing pieces<br/>Finding best matches across retailers<br/>Preparing your cart</div>
-            <div style={{marginTop:20,display:"flex",gap:6,justifyContent:"center"}}>
-              {[0,1,2].map(i=><div key={i} style={{width:8,height:8,borderRadius:"50%",background:C.accent,animation:`bounce 0.8s ease-in-out ${i*0.2}s infinite alternate`}}/>)}
+
+          <!-- Item 2 — unchecked -->
+          <div style="margin:0 8px 4px;background:#F0EBE3;border:1.5px solid #E8E0D5;border-radius:10px;padding:7px 9px;display:flex;align-items:center;gap:7px">
+            <div style="width:16px;height:16px;border-radius:4px;background:white;border:1.5px solid #E8E0D5;flex-shrink:0"></div>
+            <div style="width:10px;height:10px;border-radius:50%;background:#F5F5DC;border:1px solid #E8E0D5;flex-shrink:0"></div>
+            <div style="flex:1"><div style="font-size:10px;font-weight:700;color:#1A1209">Silk Button Blouse</div><div style="font-size:8px;color:#9A8F82">Mango</div></div>
+            <div style="font-size:10px;font-weight:800;color:#1A1209">$69.99</div>
+          </div>
+
+          <!-- Item 3 — unchecked -->
+          <div style="margin:0 8px 4px;background:#F0EBE3;border:1.5px solid #E8E0D5;border-radius:10px;padding:7px 9px;display:flex;align-items:center;gap:7px">
+            <div style="width:16px;height:16px;border-radius:4px;background:white;border:1.5px solid #E8E0D5;flex-shrink:0"></div>
+            <div style="width:10px;height:10px;border-radius:50%;background:#8B4513;flex-shrink:0"></div>
+            <div style="flex:1"><div style="font-size:10px;font-weight:700;color:#1A1209">Block Heel Mules</div><div style="font-size:8px;color:#9A8F82">Zara</div></div>
+            <div style="font-size:10px;font-weight:800;color:#1A1209">$79.99</div>
+          </div>
+
+          <!-- Item 4 — checked -->
+          <div style="margin:0 8px 4px;background:#E8442C18;border:1.5px solid #E8442C;border-radius:10px;padding:7px 9px;display:flex;align-items:center;gap:7px">
+            <div style="width:16px;height:16px;border-radius:4px;background:#E8442C;display:flex;align-items:center;justify-content:center;flex-shrink:0"><span style="color:white;font-size:9px;font-weight:700">✓</span></div>
+            <div style="width:10px;height:10px;border-radius:50%;background:#000000;flex-shrink:0"></div>
+            <div style="flex:1"><div style="font-size:10px;font-weight:700;color:#1A1209">Structured Tote</div><div style="font-size:8px;color:#9A8F82">Nordstrom</div></div>
+            <div style="font-size:10px;font-weight:800;color:#1A1209">$149.00</div>
+          </div>
+
+          <!-- Bottom bar -->
+          <div style="position:absolute;bottom:0;left:0;right:0;background:white;border-top:1px solid #E8E0D5;padding:8px 10px 10px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+              <div style="font-size:9px;color:#9A8F82">2 items selected</div>
+              <div style="font-family:'Cormorant Garamond',serif;font-size:16px;font-weight:700;color:#1A1209">$248.99</div>
+            </div>
+            <div style="background:#E8442C;color:white;border-radius:8px;padding:7px;text-align:center;font-size:10px;font-weight:800">Buy Selected — 1 Checkout</div>
+            <!-- Nav -->
+            <div style="display:flex;margin-top:6px">
+              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px"><span style="font-size:12px;color:#E8442C">▶</span><span style="font-size:7px;color:#E8442C;font-weight:700">Feed</span></div>
+              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px"><span style="font-size:12px;color:#9A8F82">📸</span><span style="font-size:7px;color:#9A8F82">Snap</span></div>
+              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px"><span style="font-size:12px;color:#9A8F82">👤</span><span style="font-size:7px;color:#9A8F82">Profile</span></div>
             </div>
           </div>
-        )}
-        {stage==="result"&&(
-          <>
-            <div style={{background:"#E8F5E9",borderRadius:14,padding:"12px 14px",marginBottom:16,display:"flex",gap:10,alignItems:"center"}}>
-              <span style={{fontSize:18}}>✅</span>
-              <div><div style={{fontSize:13,fontWeight:700,color:"#2D6A4F",fontFamily:FB}}>4 items identified</div><div style={{fontSize:11,color:"#52B788",fontFamily:FB}}>All available · Ships separately</div></div>
-            </div>
-            {items.map(item=>(
-              <div key={item.id} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:12,marginBottom:8,display:"flex",alignItems:"center",gap:10}}>
-                <Dot col={item.color}/>
-                <div style={{flex:1}}><div style={{fontWeight:700,fontSize:13,color:C.dark,fontFamily:FB}}>{item.name}</div><div style={{fontSize:11,color:C.muted,fontFamily:FB}}>{item.brand} · <span style={{color:"#2D6A4F",fontWeight:600}}>{item.match} match</span></div></div>
-                <div style={{fontWeight:800,fontSize:14,color:C.dark,fontFamily:FB}}>${item.price.toFixed(2)}</div>
-              </div>
-            ))}
-          </>
-        )}
-      </div>
-      {stage==="result"&&(
-        <div style={{position:"absolute",bottom:0,left:0,right:0,background:"white",borderTop:`1px solid ${C.border}`,padding:"14px 16px 24px",boxShadow:"0 -8px 30px rgba(26,18,9,0.08)"}}>
-          <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
-            <div style={{fontSize:12,color:C.muted,fontFamily:FB}}>4 items · 1 checkout</div>
-            <div style={{fontSize:19,fontWeight:800,color:C.dark,fontFamily:FD}}>${total.toFixed(2)}</div>
-          </div>
-          <button style={{width:"100%",padding:14,borderRadius:14,background:C.accent,color:"white",border:"none",fontWeight:800,fontSize:14,fontFamily:FB,cursor:"pointer"}}>Buy Full Outfit — 1 Checkout</button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function CheckoutScreen({items,total,onDone}){
-  const [stage,setStage]=useState("review");
-  const retailers=[...new Set(items.map(i=>i.brand))];
-  const handlePay=()=>{setStage("processing");setTimeout(()=>setStage("done"),2500);};
-  if(stage==="done") return(
-    <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",padding:32,textAlign:"center"}}>
-      <div style={{fontSize:64,marginBottom:14}}>🎉</div>
-      <div style={{fontSize:24,fontWeight:800,color:C.dark,fontFamily:FD,marginBottom:8}}>Order Placed!</div>
-      <div style={{fontSize:13,color:C.muted,fontFamily:FB,lineHeight:1.8,marginBottom:20}}>Your {items.length} items have been ordered<br/>from {retailers.length} retailer{retailers.length>1?"s":""}.<br/>One payment. Multiple deliveries.</div>
-      <div style={{width:"100%",background:C.tag,borderRadius:16,padding:"14px 16px",marginBottom:18}}>
-        {retailers.map((r,i)=>(
-          <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:i<retailers.length-1?`1px solid ${C.border}`:"none"}}>
-            <span style={{fontSize:13,color:C.dark,fontFamily:FB}}>{r}</span>
-            <span style={{fontSize:12,color:"#2D6A4F",fontFamily:FB,fontWeight:600}}>✓ Confirmed</span>
-          </div>
-        ))}
-      </div>
-      <button onClick={onDone} style={{width:"100%",padding:14,borderRadius:14,background:C.accent,color:"white",border:"none",fontWeight:800,fontSize:14,fontFamily:FB,cursor:"pointer"}}>Back to Feed</button>
-    </div>
-  );
-  if(stage==="processing") return(
-    <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",padding:32,textAlign:"center"}}>
-      <div style={{fontSize:56,marginBottom:16}}>⚡</div>
-      <div style={{fontSize:21,fontWeight:800,color:C.dark,fontFamily:FD,marginBottom:8}}>Processing order...</div>
-      <div style={{fontSize:13,color:C.muted,fontFamily:FB,lineHeight:1.8}}>Placing orders across {retailers.length} retailer{retailers.length>1?"s":""} simultaneously.<br/>You only pay once.</div>
-      <div style={{marginTop:20,display:"flex",gap:6}}>
-        {[0,1,2].map(i=><div key={i} style={{width:8,height:8,borderRadius:"50%",background:C.accent,animation:`bounce 0.8s ease-in-out ${i*0.2}s infinite alternate`}}/>)}
-      </div>
-    </div>
-  );
-  return(
-    <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
-      <div style={{padding:"16px 16px 0",flexShrink:0}}>
-        <div style={{fontSize:17,fontWeight:800,color:C.dark,fontFamily:FD,marginBottom:14}}>Checkout</div>
-        <div style={{background:C.accentLight,border:`1px solid ${C.accent}`,borderRadius:14,padding:"10px 14px",marginBottom:16,fontSize:12,color:C.accent,fontFamily:FB,fontWeight:600}}>⚡ 1 payment · {retailers.length} retailers · ordered simultaneously</div>
-      </div>
-      <div style={{flex:1,overflowY:"auto",padding:"0 16px 150px"}}>
-        <div style={{fontSize:11,fontWeight:700,color:C.dark,fontFamily:FB,textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Order Summary</div>
-        {items.map(item=>(
-          <div key={item.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
-            <div style={{display:"flex",gap:8,alignItems:"center"}}><Dot col={item.color}/><div><div style={{fontSize:13,fontWeight:600,color:C.dark,fontFamily:FB}}>{item.name}</div><div style={{fontSize:11,color:C.muted,fontFamily:FB}}>{item.brand}</div></div></div>
-            <div style={{fontWeight:700,fontSize:13,color:C.dark,fontFamily:FB}}>${item.price.toFixed(2)}</div>
-          </div>
-        ))}
-        <div style={{marginTop:16,background:C.tag,borderRadius:14,padding:14}}>
-          <div style={{fontSize:11,fontWeight:700,color:C.dark,fontFamily:FB,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Payment</div>
-          <div style={{background:"white",borderRadius:10,padding:"10px 12px",border:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <span style={{fontSize:13,color:C.dark,fontFamily:FB}}>•••• •••• •••• 4242</span>
-            <span style={{fontSize:18}}>💳</span>
-          </div>
-        </div>
-        <div style={{marginTop:12,background:C.tag,borderRadius:14,padding:14}}>
-          <div style={{fontSize:11,fontWeight:700,color:C.dark,fontFamily:FB,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Shipping</div>
-          <div style={{fontSize:13,color:C.dark,fontFamily:FB}}>123 Main St, Apt 4B</div>
-          <div style={{fontSize:11,color:C.muted,fontFamily:FB}}>New York, NY 10001</div>
         </div>
       </div>
-      <div style={{position:"absolute",bottom:0,left:0,right:0,background:"white",borderTop:`1px solid ${C.border}`,padding:"14px 16px 24px",boxShadow:"0 -8px 30px rgba(26,18,9,0.08)"}}>
-        <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
-          <div style={{fontSize:12,color:C.muted,fontFamily:FB}}>Total · {items.length} items</div>
-          <div style={{fontSize:20,fontWeight:800,color:C.dark,fontFamily:FD}}>${total.toFixed(2)}</div>
-        </div>
-        <button onClick={handlePay} style={{width:"100%",padding:14,borderRadius:14,background:C.accent,color:"white",border:"none",fontWeight:800,fontSize:14,fontFamily:FB,cursor:"pointer",boxShadow:`0 6px 20px ${C.accent}44`}}>Place Order Now →</button>
+
+    </div>
+  </section>
+
+  <!-- FOR WHO -->
+  <section class="who-section" id="who">
+    <div style="text-align:center" >
+      <div class="section-label">Built for everyone</div>
+      <h2 class="section-title">Creators <em>earn.</em><br>Shoppers <em>save.</em></h2>
+      <p class="section-sub">Two sides of the same platform, both getting exactly what they needed.</p>
+    </div>
+
+    <div class="who-grid">
+      <div class="who-card creator">
+        <div class="who-tag">For Creators</div>
+        <div class="who-title">Post hauls.<br>Get paid.</div>
+        <p class="who-desc">No sponsorship deals, no brand negotiations, no minimum follower count. Post a haul video, tag your items, and earn every time someone buys through your content.</p>
+        <ul class="who-perks">
+          <li><div class="perk-check">✓</div>Earn a commission on every purchase</li>
+          <li><div class="perk-check">✓</div>Verified creator badge builds trust</li>
+          <li><div class="perk-check">✓</div>Deep analytics on what converts</li>
+          <li><div class="perk-check">✓</div>No minimum follower count to apply</li>
+        </ul>
+      </div>
+
+      <div class="who-card shopper">
+        <div class="who-tag">For Shoppers</div>
+        <div class="who-title">Snap it.<br>Own it.</div>
+        <p class="who-desc">Saw an outfit you love — on the street, in a video, anywhere? Upload a photo and we'll find every piece across every retailer, bundled into one single checkout.</p>
+        <ul class="who-perks">
+          <li><div class="perk-check">✓</div>AI identifies every item from any photo</li>
+          <li><div class="perk-check">✓</div>Buy from multiple retailers at once</li>
+          <li><div class="perk-check">✓</div>One payment, one confirmation</li>
+          <li><div class="perk-check">✓</div>Explore hauls from creators worldwide</li>
+        </ul>
       </div>
     </div>
-  );
-}
+  </section>
 
-function ProfileScreen(){
-  return(
-    <div style={{padding:"16px 16px 100px",overflowY:"auto",height:"100%"}}>
-      <div style={{fontSize:17,fontWeight:800,color:C.dark,fontFamily:FD,marginBottom:18}}>Profile</div>
-      <div style={{textAlign:"center",marginBottom:20}}>
-        <div style={{width:68,height:68,borderRadius:"50%",background:C.accent,display:"flex",alignItems:"center",justifyContent:"center",fontSize:26,fontWeight:800,color:"white",fontFamily:FB,margin:"0 auto 10px"}}>Y</div>
-        <div style={{fontSize:17,fontWeight:800,color:C.dark,fontFamily:FD}}>Your Profile</div>
-        <div style={{fontSize:12,color:C.muted,fontFamily:FB}}>Fashion enthusiast</div>
-        <div style={{display:"inline-block",marginTop:6,padding:"4px 12px",background:C.accentLight,borderRadius:20,fontSize:11,color:C.accent,fontWeight:700,fontFamily:FB}}>✓ Verified Creator</div>
-      </div>
-      <div style={{display:"flex",gap:10,marginBottom:20}}>
-        {[{l:"Hauls",v:"12"},{l:"Purchased",v:"$2.4K"},{l:"Followers",v:"8.2K"}].map(s=>(
-          <div key={s.l} style={{flex:1,background:C.tag,borderRadius:14,padding:"12px 6px",textAlign:"center"}}>
-            <div style={{fontSize:18,fontWeight:800,color:C.accent,fontFamily:FD}}>{s.v}</div>
-            <div style={{fontSize:10,color:C.muted,fontFamily:FB}}>{s.l}</div>
-          </div>
-        ))}
-      </div>
-      <div style={{fontSize:11,fontWeight:700,color:C.dark,fontFamily:FB,textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Recent Orders</div>
-      {["Spring Minimalist Haul · $199","Y2K Pieces · $220","Snap Purchase · $269"].map((o,i)=>(
-        <div key={i} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:12,marginBottom:8,display:"flex",justifyContent:"space-between"}}>
-          <span style={{fontSize:12,color:C.dark,fontFamily:FB}}>{o.split("·")[0]}</span>
-          <span style={{fontSize:12,fontWeight:700,color:C.accent,fontFamily:FB}}>{o.split("·")[1]}</span>
-        </div>
-      ))}
+  <!-- CTA -->
+  <section class="cta-section">
+    <h2>Ready to <em>shop</em><br>differently?</h2>
+    <p>Try the working prototype — browse hauls, pick items, and experience the one-checkout flow. No signup required.</p>
+    <div class="cta-btns">
+      <a href="https://haul-app-dusky.vercel.app" target="_blank" class="btn-primary btn-large">Try the Prototype →</a>
     </div>
-  );
-}
+  </section>
 
-function Nav({screen,set}){
-  const tabs=[{id:"feed",icon:"▶",label:"Feed"},{id:"snap",icon:"📸",label:"Snap"},{id:"profile",icon:"👤",label:"Profile"}];
-  return(
-    <div style={{position:"absolute",bottom:0,left:0,right:0,background:"white",borderTop:`1px solid ${C.border}`,display:"flex",padding:"8px 0 18px"}}>
-      {tabs.map(t=>(
-        <button key={t.id} onClick={()=>set(t.id)} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2,border:"none",background:"none",cursor:"pointer",color:screen===t.id?C.accent:C.muted}}>
-          <span style={{fontSize:18}}>{t.icon}</span>
-          <span style={{fontSize:10,fontFamily:FB,fontWeight:screen===t.id?700:500}}>{t.label}</span>
-        </button>
-      ))}
-    </div>
-  );
-}
+  <!-- FOOTER -->
+  <footer>
+    <div class="footer-logo">haul<span>.</span></div>
+    <div class="footer-right">© 2026 Haul. Early access.</div>
+  </footer>
 
-function App(){
-  const [screen,setScreen]=useState("feed");
-  const [haul,setHaul]=useState(null);
-  const [checkout,setCheckout]=useState(null);
-  const showNav=screen==="feed"||screen==="snap"||screen==="profile";
-  return(
-    <div style={{width:390,height:780,background:C.bg,borderRadius:44,border:"10px solid #2A2010",boxShadow:"0 40px 100px rgba(0,0,0,0.35)",position:"relative",overflow:"hidden",display:"flex",flexDirection:"column"}}>
-      <div style={{position:"absolute",top:0,left:"50%",transform:"translateX(-50%)",width:110,height:26,background:"#2A2010",borderRadius:"0 0 16px 16px",zIndex:100}}/>
-      <div style={{display:"flex",justifyContent:"space-between",padding:"32px 18px 0",fontSize:10,color:C.muted,fontFamily:FB,fontWeight:600,flexShrink:0}}>
-        <span>9:41</span><span>●●●○ 🔋</span>
-      </div>
-      <div style={{flex:1,position:"relative",overflow:"hidden"}}>
-        {screen==="feed"&&!haul&&<FeedScreen onOpen={h=>{setHaul(h);}} onSnap={()=>setScreen("snap")} onProfile={()=>setScreen("profile")}/>}
-        {screen==="feed"&&haul&&!checkout&&<DetailScreen haul={haul} onBack={()=>setHaul(null)} onCheckout={(items,total)=>{setCheckout({items,total});setScreen("checkout");}}/>}
-        {screen==="checkout"&&checkout&&<CheckoutScreen items={checkout.items} total={checkout.total} onDone={()=>{setCheckout(null);setHaul(null);setScreen("feed");}}/>}
-        {screen==="snap"&&<SnapScreen onBack={()=>setScreen("feed")}/>}
-        {screen==="profile"&&<ProfileScreen/>}
-      </div>
-      {showNav&&<Nav screen={screen} set={setScreen}/>}
-    </div>
-  );
-}
+  <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
+    // Scroll reveal
+    const reveals = document.querySelectorAll('.reveal');
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(e => {
+        if (e.isIntersecting) {
+          e.target.classList.add('visible');
+        }
+      });
+    }, { threshold: 0.1 });
+    reveals.forEach(el => observer.observe(el));
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
-</script>
-</body>
-</html>
+    // Smooth nav highlight
+    document.querySelectorAll('a[href^="#"]').forEach(a => {
+      a.addEventListener('click', e => {
+        e.preventDefault(
