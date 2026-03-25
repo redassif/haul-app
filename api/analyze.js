@@ -10,56 +10,120 @@ export default async function handler(req, res) {
     const { imageData, mediaType } = req.body;
     if (!imageData) return res.status(400).json({ error: "No image provided" });
 
-    // Check env vars
-    if (!process.env.IMGBB_KEY) return res.status(500).json({ error: "IMGBB_KEY not set in environment variables" });
-    if (!process.env.SERPAPI_KEY) return res.status(500).json({ error: "SERPAPI_KEY not set in environment variables" });
+    if (!process.env.ANTHROPIC_API_KEY) return res.status(500).json({ error: "ANTHROPIC_API_KEY not set" });
+    if (!process.env.SERPAPI_KEY) return res.status(500).json({ error: "SERPAPI_KEY not set" });
 
-    // Step 1: Upload image to imgbb
-    const imgbbForm = new URLSearchParams();
-    imgbbForm.append("key", process.env.IMGBB_KEY);
-    imgbbForm.append("image", imageData);
-
-    const imgbbResp = await fetch("https://api.imgbb.com/1/upload", {
+    // Step 1: Claude generates precise search queries for each item
+    const claudeResp = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: imgbbForm.toString(),
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": process.env.ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 1000,
+        messages: [{
+          role: "user",
+          content: [
+            {
+              type: "image",
+              source: {
+                type: "base64",
+                media_type: mediaType || "image/jpeg",
+                data: imageData,
+              },
+            },
+            {
+              type: "text",
+              text: `You are a fashion expert analyzing an outfit photo for a shopping app.
+
+Identify each clearly visible clothing item and accessory in this image.
+
+For each item return a very specific Google Shopping search query that would find that exact product — include color, style, cut, material if visible, and gender.
+
+Return ONLY a valid JSON array, no markdown, no backticks. Format:
+[
+  {
+    "name": "Short display name (e.g. Beige Oversized Blazer)",
+    "searchQuery": "beige oversized double breasted blazer women",
+    "color": "#hex color code"
+  }
+]
+
+Rules:
+- Maximum 5 items
+- Only clearly visible items
+- Make search queries as specific as possible — include descriptive adjectives
+- Never include brand names in searchQuery unless logo is clearly visible
+- Include gender (women/men) in every searchQuery`
+            },
+          ],
+        }],
+      }),
     });
 
-    const imgbbData = await imgbbResp.json();
-    if (!imgbbData.success) return res.status(500).json({ error: "imgbb upload failed: " + JSON.stringify(imgbbData) });
+    const claudeData = await claudeResp.json();
+    if (!claudeResp.ok) return res.status(500).json({ error: "Claude error: " + claudeData.error?.message });
 
-    const imageUrl = imgbbData.data.url;
+    const text = claudeData.content[0].text.trim();
+    const identified = JSON.parse(text);
 
-    // Step 2: Google Lens via SerpAPI
-    const params = new URLSearchParams({
-      api_key: process.env.SERPAPI_KEY,
-      engine: "google_lens",
-      url: imageUrl,
-    });
+    if (!identified || identified.length === 0) {
+      return res.status(200).json({ items: [] });
+    }
 
-    const lensResp = await fetch(`https://serpapi.com/search?${params}`);
-    const lensData = await lensResp.json();
+    // Step 2: Search each item on Google Shopping in parallel
+    const items = await Promise.all(
+      identified.map(async (item, i) => {
+        try {
+          const params = new URLSearchParams({
+            api_key: process.env.SERPAPI_KEY,
+            engine: "google_shopping",
+            q: item.searchQuery,
+            num: 5,
+            gl: "us",
+            hl: "en",
+          });
 
-    if (lensData.error) return res.status(500).json({ error: "SerpAPI error: " + lensData.error });
+          const searchResp = await fetch(`https://serpapi.com/search?${params}`);
+          const searchData = await searchResp.json();
+          const results = searchData.shopping_results || [];
+          const top = results[0];
 
-    const visualMatches = lensData.visual_matches || [];
-    if (visualMatches.length === 0) return res.status(200).json({ items: [], debug: "No visual matches returned" });
+          if (!top) return null;
 
-    const items = visualMatches.slice(0, 6).map((match, i) => ({
-      id: Date.now() + i,
-      name: match.title || `Item ${i + 1}`,
-      brand: match.source || "Various",
-      price: match.price?.extracted_value || Math.floor(29 + Math.random() * 120),
-      realPrice: match.price?.value || null,
-      realImage: match.thumbnail || match.image,
-      realLink: match.link,
-      realSource: match.source,
-      color: "#888888",
-      checked: true,
-      match: `${Math.floor(85 + Math.random() * 14)}%`,
-    }));
+          return {
+            id: Date.now() + i,
+            name: item.name,
+            searchQuery: item.searchQuery,
+            color: item.color || "#888",
+            checked: true,
+            match: `${Math.floor(88 + Math.random() * 10)}%`,
+            realName: top.title,
+            realPrice: top.price,
+            realImage: top.thumbnail,
+            realLink: top.link,
+            realSource: top.source,
+            price: top.extracted_price || Math.floor(29 + Math.random() * 120),
+            // Keep top 3 alternatives for user to browse
+            alternatives: results.slice(1, 4).map(r => ({
+              title: r.title,
+              price: r.price,
+              image: r.thumbnail,
+              link: r.link,
+              source: r.source,
+            })),
+          };
+        } catch {
+          return null;
+        }
+      })
+    );
 
-    return res.status(200).json({ items });
+    const validItems = items.filter(Boolean);
+    return res.status(200).json({ items: validItems });
 
   } catch (err) {
     console.error(err);

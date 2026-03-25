@@ -178,7 +178,7 @@ function SnapScreen({onBack, onCheckout}){
 
   const analyzeImage=async(base64, mimeType)=>{
     setStage("analyzing");
-    setSearchStatus("Searching Google Shopping...");
+    setSearchStatus("Reading your outfit with AI...");
     setError(null);
     try{
       // Single call — Google Lens finds real products directly from the photo
@@ -241,9 +241,9 @@ function SnapScreen({onBack, onCheckout}){
           <div style={{textAlign:"center",padding:"30px 20px"}}>
             {preview&&<img src={preview} style={{width:"100%",borderRadius:16,marginBottom:20,maxHeight:220,objectFit:"cover"}}/>}
             <div style={{fontSize:56,marginBottom:16,display:"inline-block",animation:"spin 1s linear infinite"}}>🔍</div>
-            <div style={{fontSize:19,fontWeight:800,color:C.dark,fontFamily:FD,marginBottom:8}}>Searching Google Shopping...</div>
+            <div style={{fontSize:19,fontWeight:800,color:C.dark,fontFamily:FD,marginBottom:8}}>Finding products...</div>
             <div style={{fontSize:13,color:C.accent,fontFamily:FB,fontWeight:600,marginBottom:6}}>{searchStatus}</div>
-            <div style={{fontSize:12,color:C.muted,fontFamily:FB,lineHeight:1.8}}>Finding exact matches across retailers</div>
+            <div style={{fontSize:12,color:C.muted,fontFamily:FB,lineHeight:1.8}}>AI reads your outfit · searches Google Shopping · finds exact matches</div>
             <div style={{marginTop:20,display:"flex",gap:6,justifyContent:"center"}}>
               {[0,1,2].map(i=><div key={i} style={{width:8,height:8,borderRadius:"50%",background:C.accent,animation:`bounce 0.8s ease-in-out ${i*0.2}s infinite alternate`}}/>)}
             </div>
@@ -266,20 +266,35 @@ function SnapScreen({onBack, onCheckout}){
               <button onClick={()=>setItems(items.map(i=>({...i,checked:true})))} style={{fontSize:12,color:C.accent,fontFamily:FB,fontWeight:700,background:"none",border:"none",cursor:"pointer"}}>Select All</button>
             </div>
             {items.map(item=>(
-              <div key={item.id} onClick={()=>toggle(item.id)} style={{display:"flex",alignItems:"center",gap:10,background:item.checked?C.accentLight:C.tag,border:`1.5px solid ${item.checked?C.accent:C.border}`,borderRadius:14,padding:10,marginBottom:8,cursor:"pointer"}}>
-                <div style={{width:20,height:20,borderRadius:5,border:`2px solid ${item.checked?C.accent:C.border}`,background:item.checked?C.accent:"white",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                  {item.checked&&<span style={{color:"white",fontSize:11,fontWeight:700}}>✓</span>}
+              <div key={item.id} style={{marginBottom:12}}>
+                <div onClick={()=>toggle(item.id)} style={{display:"flex",alignItems:"center",gap:10,background:item.checked?C.accentLight:C.tag,border:`1.5px solid ${item.checked?C.accent:C.border}`,borderRadius:14,padding:10,cursor:"pointer"}}>
+                  <div style={{width:20,height:20,borderRadius:5,border:`2px solid ${item.checked?C.accent:C.border}`,background:item.checked?C.accent:"white",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                    {item.checked&&<span style={{color:"white",fontSize:11,fontWeight:700}}>✓</span>}
+                  </div>
+                  {item.realImage
+                    ? <img src={item.realImage} alt={item.realName} style={{width:52,height:52,borderRadius:10,objectFit:"cover",flexShrink:0,background:"#eee"}} onError={e=>{e.target.style.display="none"}}/>
+                    : <div style={{width:52,height:52,borderRadius:10,background:item.color,flexShrink:0}}/>
+                  }
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontWeight:700,fontSize:12,color:C.dark,fontFamily:FB,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{item.realName||item.name}</div>
+                    <div style={{fontSize:11,color:C.muted,fontFamily:FB}}>{item.realSource||item.brand} · <span style={{color:"#2D6A4F",fontWeight:600}}>{item.match} match</span></div>
+                    {item.realLink&&<div style={{fontSize:10,color:C.accent,fontFamily:FB,marginTop:2}}>🛍 Available online</div>}
+                  </div>
+                  <div style={{fontWeight:800,fontSize:13,color:C.dark,fontFamily:FB,flexShrink:0}}>{item.realPrice||`$${item.price}`}</div>
                 </div>
-                {item.realImage
-                  ? <img src={item.realImage} alt={item.realName} style={{width:52,height:52,borderRadius:10,objectFit:"cover",flexShrink:0,background:"#eee"}} onError={e=>{e.target.style.display="none"}}/>
-                  : <div style={{width:52,height:52,borderRadius:10,background:item.color,flexShrink:0}}/>
-                }
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontWeight:700,fontSize:12,color:C.dark,fontFamily:FB,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{item.realName||item.name}</div>
-                  <div style={{fontSize:11,color:C.muted,fontFamily:FB}}>{item.realSource||item.brand} · <span style={{color:"#2D6A4F",fontWeight:600}}>{item.match} match</span></div>
-                  {item.realLink&&<div style={{fontSize:10,color:C.accent,fontFamily:FB,marginTop:2}}>🛍 Available online</div>}
-                </div>
-                <div style={{fontWeight:800,fontSize:13,color:C.dark,fontFamily:FB,flexShrink:0}}>{item.realPrice||`$${item.price?.toFixed(2)}`}</div>
+                {item.alternatives&&item.alternatives.length>0&&(
+                  <div style={{paddingLeft:8,marginTop:6}}>
+                    <div style={{fontSize:10,color:C.muted,fontFamily:FB,marginBottom:5}}>Other options:</div>
+                    <div style={{display:"flex",gap:6,overflowX:"auto"}}>
+                      {item.alternatives.map((alt,ai)=>(
+                        <div key={ai} onClick={()=>setItems(items.map(it=>it.id===item.id?{...it,realName:alt.title,realPrice:alt.price,realImage:alt.image,realLink:alt.link,realSource:alt.source,price:parseFloat((alt.price||"0").replace(/[^0-9.]/g,""))||it.price}:it))} style={{flexShrink:0,width:52,cursor:"pointer",opacity:0.75}}>
+                          <img src={alt.image} alt={alt.title} style={{width:52,height:52,borderRadius:8,objectFit:"cover",border:`1px solid ${C.border}`}} onError={e=>{e.target.style.display="none"}}/>
+                          <div style={{fontSize:9,color:C.muted,fontFamily:FB,textAlign:"center",marginTop:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{alt.price}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </>
