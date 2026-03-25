@@ -159,12 +159,10 @@ function DetailScreen({haul,onBack,onCheckout}){
 function SnapScreen({onBack, onCheckout}){
   const [stage,setStage]=useState("upload");
   const [preview,setPreview]=useState(null);
-  const [imageData,setImageData]=useState(null);
   const [items,setItems]=useState([]);
   const [error,setError]=useState(null);
+  const [searchStatus,setSearchStatus]=useState("");
   const fileRef=React.useRef();
-
-  const COLORS=["#8B7355","#2C3E50","#4A6FA5","#F5F0E8","#C9A84C","#556B2F","#FF69B4","#E0E0E0","#8B4513","#1A1A1A","#F5F5DC","#C4A882"];
 
   const handleFile=async(e)=>{
     const file=e.target.files[0];
@@ -173,7 +171,6 @@ function SnapScreen({onBack, onCheckout}){
     reader.onload=(ev)=>{
       setPreview(ev.target.result);
       const base64=ev.target.result.split(",")[1];
-      setImageData(base64);
       analyzeImage(base64, file.type);
     };
     reader.readAsDataURL(file);
@@ -181,8 +178,10 @@ function SnapScreen({onBack, onCheckout}){
 
   const analyzeImage=async(base64, mimeType)=>{
     setStage("analyzing");
+    setSearchStatus("Identifying clothing items...");
     setError(null);
     try{
+      // Step 1: Claude identifies items
       const resp=await fetch("/api/analyze",{
         method:"POST",
         headers:{"Content-Type":"application/json"},
@@ -190,8 +189,40 @@ function SnapScreen({onBack, onCheckout}){
       });
       const data=await resp.json();
       if(!resp.ok) throw new Error(data.error||"Failed");
-      const withIds=data.items.map((item,i)=>({...item,id:Date.now()+i,checked:true,match:`${Math.floor(88+Math.random()*10)}%`}));
-      setItems(withIds);
+
+      setSearchStatus("Finding real products across retailers...");
+
+      // Step 2: Search real products for each item
+      const itemsWithProducts=await Promise.all(
+        data.items.map(async(item,i)=>{
+          try{
+            const searchResp=await fetch("/api/search",{
+              method:"POST",
+              headers:{"Content-Type":"application/json"},
+              body:JSON.stringify({query:`${item.name} ${item.brand} women fashion`})
+            });
+            const searchData=await searchResp.json();
+            const topResult=searchData.results?.[0];
+            return{
+              ...item,
+              id:Date.now()+i,
+              checked:true,
+              match:`${Math.floor(88+Math.random()*10)}%`,
+              // Use real product data if found, fallback to AI data
+              realName: topResult?.title || item.name,
+              realPrice: topResult?.price || `$${item.price.toFixed(2)}`,
+              realImage: topResult?.image || null,
+              realLink: topResult?.link || null,
+              realSource: topResult?.source || item.brand,
+              allResults: searchData.results || [],
+            };
+          }catch{
+            return{...item,id:Date.now()+i,checked:true,match:"88%",allResults:[]};
+          }
+        })
+      );
+
+      setItems(itemsWithProducts);
       setStage("result");
     }catch(err){
       setError("Couldn't analyze image. Please try another photo.");
@@ -200,8 +231,21 @@ function SnapScreen({onBack, onCheckout}){
   };
 
   const selected=items.filter(i=>i.checked);
-  const total=selected.reduce((s,i)=>s+i.price,0);
+  const total=selected.reduce((s,i)=>{
+    const price=parseFloat((i.realPrice||"").replace(/[^0-9.]/g,""))||i.price||0;
+    return s+price;
+  },0);
   const toggle=id=>setItems(items.map(i=>i.id===id?{...i,checked:!i.checked}:i));
+
+  // Build checkout items with real product data
+  const buildCheckoutItems=()=>selected.map(item=>({
+    ...item,
+    name: item.realName||item.name,
+    brand: item.realSource||item.brand,
+    price: parseFloat((item.realPrice||"").replace(/[^0-9.]/g,""))||item.price||0,
+    image: item.realImage,
+    link: item.realLink,
+  }));
 
   return(
     <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
@@ -210,7 +254,7 @@ function SnapScreen({onBack, onCheckout}){
           <button onClick={onBack} style={{width:36,height:36,borderRadius:"50%",border:`1px solid ${C.border}`,background:C.tag,fontSize:16,cursor:"pointer"}}>←</button>
           <div>
             <div style={{fontSize:17,fontWeight:800,color:C.dark,fontFamily:FD}}>Snap to Shop</div>
-            <div style={{fontSize:11,color:C.muted,fontFamily:FB}}>Upload any outfit — AI finds every piece</div>
+            <div style={{fontSize:11,color:C.muted,fontFamily:FB}}>Upload any outfit — AI finds real products</div>
           </div>
         </div>
       </div>
@@ -223,7 +267,7 @@ function SnapScreen({onBack, onCheckout}){
             <div onClick={()=>fileRef.current.click()} style={{border:`2px dashed ${C.border}`,borderRadius:20,padding:"44px 20px",textAlign:"center",cursor:"pointer",background:C.tag,marginBottom:16}}>
               <div style={{fontSize:48,marginBottom:14}}>📸</div>
               <div style={{fontSize:17,fontWeight:800,color:C.dark,fontFamily:FD,marginBottom:6}}>Upload an outfit photo</div>
-              <div style={{fontSize:13,color:C.muted,fontFamily:FB,lineHeight:1.6}}>Tap to choose a photo.<br/>AI identifies every piece instantly.</div>
+              <div style={{fontSize:13,color:C.muted,fontFamily:FB,lineHeight:1.6}}>Tap to choose a photo.<br/>AI finds real products you can buy instantly.</div>
               <div style={{marginTop:18,display:"inline-block",background:C.accent,color:"white",padding:"10px 22px",borderRadius:20,fontFamily:FB,fontWeight:700,fontSize:13}}>Choose Photo</div>
             </div>
           </>
@@ -234,7 +278,8 @@ function SnapScreen({onBack, onCheckout}){
             {preview&&<img src={preview} style={{width:"100%",borderRadius:16,marginBottom:20,maxHeight:220,objectFit:"cover"}}/>}
             <div style={{fontSize:56,marginBottom:16,display:"inline-block",animation:"spin 1s linear infinite"}}>🔍</div>
             <div style={{fontSize:19,fontWeight:800,color:C.dark,fontFamily:FD,marginBottom:8}}>Analyzing outfit...</div>
-            <div style={{fontSize:13,color:C.muted,fontFamily:FB,lineHeight:1.8}}>Identifying clothing pieces<br/>Finding best matches across retailers<br/>Preparing your cart</div>
+            <div style={{fontSize:13,color:C.accent,fontFamily:FB,fontWeight:600,marginBottom:6}}>{searchStatus}</div>
+            <div style={{fontSize:12,color:C.muted,fontFamily:FB,lineHeight:1.8}}>Finding real products across retailers</div>
             <div style={{marginTop:20,display:"flex",gap:6,justifyContent:"center"}}>
               {[0,1,2].map(i=><div key={i} style={{width:8,height:8,borderRadius:"50%",background:C.accent,animation:`bounce 0.8s ease-in-out ${i*0.2}s infinite alternate`}}/>)}
             </div>
@@ -243,12 +288,12 @@ function SnapScreen({onBack, onCheckout}){
 
         {stage==="result"&&(
           <>
-            {preview&&<img src={preview} style={{width:"100%",borderRadius:16,marginBottom:14,maxHeight:200,objectFit:"cover"}}/>}
+            {preview&&<img src={preview} style={{width:"100%",borderRadius:16,marginBottom:14,maxHeight:180,objectFit:"cover"}}/>}
             <div style={{background:"#E8F5E9",borderRadius:14,padding:"12px 14px",marginBottom:14,display:"flex",gap:10,alignItems:"center"}}>
               <span style={{fontSize:18}}>✅</span>
               <div>
-                <div style={{fontSize:13,fontWeight:700,color:"#2D6A4F",fontFamily:FB}}>{items.length} items identified</div>
-                <div style={{fontSize:11,color:"#52B788",fontFamily:FB}}>All available · Ships separately</div>
+                <div style={{fontSize:13,fontWeight:700,color:"#2D6A4F",fontFamily:FB}}>{items.length} items found</div>
+                <div style={{fontSize:11,color:"#52B788",fontFamily:FB}}>Real products · Ships separately</div>
               </div>
               <button onClick={()=>{setStage("upload");setPreview(null);setItems([]);}} style={{marginLeft:"auto",fontSize:11,color:C.muted,background:"none",border:"none",cursor:"pointer",fontFamily:FB}}>Try again</button>
             </div>
@@ -261,17 +306,16 @@ function SnapScreen({onBack, onCheckout}){
                 <div style={{width:20,height:20,borderRadius:5,border:`2px solid ${item.checked?C.accent:C.border}`,background:item.checked?C.accent:"white",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                   {item.checked&&<span style={{color:"white",fontSize:11,fontWeight:700}}>✓</span>}
                 </div>
-                <img
-                  src={`https://loremflickr.com/64/64/${encodeURIComponent(item.imageQuery||item.name)}`}
-                  alt={item.name}
-                  style={{width:52,height:52,borderRadius:10,objectFit:"cover",flexShrink:0,background:item.color}}
-                  onError={e=>{e.target.style.display="none"}}
-                />
+                {item.realImage
+                  ? <img src={item.realImage} alt={item.realName} style={{width:52,height:52,borderRadius:10,objectFit:"cover",flexShrink:0,background:"#eee"}} onError={e=>{e.target.style.display="none"}}/>
+                  : <div style={{width:52,height:52,borderRadius:10,background:item.color,flexShrink:0}}/>
+                }
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontWeight:700,fontSize:12,color:C.dark,fontFamily:FB,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{item.name}</div>
-                  <div style={{fontSize:11,color:C.muted,fontFamily:FB}}>{item.brand} · <span style={{color:"#2D6A4F",fontWeight:600}}>{item.match} match</span></div>
+                  <div style={{fontWeight:700,fontSize:12,color:C.dark,fontFamily:FB,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{item.realName||item.name}</div>
+                  <div style={{fontSize:11,color:C.muted,fontFamily:FB}}>{item.realSource||item.brand} · <span style={{color:"#2D6A4F",fontWeight:600}}>{item.match} match</span></div>
+                  {item.realLink&&<div style={{fontSize:10,color:C.accent,fontFamily:FB,marginTop:2}}>🛍 Available online</div>}
                 </div>
-                <div style={{fontWeight:800,fontSize:13,color:C.dark,fontFamily:FB,flexShrink:0}}>${item.price.toFixed(2)}</div>
+                <div style={{fontWeight:800,fontSize:13,color:C.dark,fontFamily:FB,flexShrink:0}}>{item.realPrice||`$${item.price?.toFixed(2)}`}</div>
               </div>
             ))}
           </>
@@ -284,7 +328,7 @@ function SnapScreen({onBack, onCheckout}){
             <div style={{fontSize:12,color:C.muted,fontFamily:FB}}>{selected.length} item{selected.length!==1?"s":""} · 1 checkout</div>
             <div style={{fontSize:19,fontWeight:800,color:C.dark,fontFamily:FD}}>${total.toFixed(2)}</div>
           </div>
-          <button onClick={()=>onCheckout(selected,total)} style={{width:"100%",padding:14,borderRadius:14,background:C.accent,color:"white",border:"none",fontWeight:800,fontSize:14,fontFamily:FB,cursor:"pointer"}}>Buy Full Outfit — 1 Checkout</button>
+          <button onClick={()=>onCheckout(buildCheckoutItems(),total)} style={{width:"100%",padding:14,borderRadius:14,background:C.accent,color:"white",border:"none",fontWeight:800,fontSize:14,fontFamily:FB,cursor:"pointer"}}>Buy Full Outfit — 1 Checkout</button>
         </div>
       )}
     </div>
@@ -332,18 +376,17 @@ function CheckoutScreen({items,total,onDone}){
         {items.map(item=>(
           <div key={item.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
             <div style={{display:"flex",gap:10,alignItems:"center"}}>
-              <img
-                src={`https://loremflickr.com/64/64/${encodeURIComponent(item.imageQuery||item.name)}`}
-                alt={item.name}
-                style={{width:48,height:48,borderRadius:10,objectFit:"cover",flexShrink:0,background:item.color}}
-                onError={e=>{e.target.style.background=item.color;e.target.src=""}}
-              />
+              {item.image
+                ? <img src={item.image} alt={item.name} style={{width:48,height:48,borderRadius:10,objectFit:"cover",flexShrink:0}} onError={e=>{e.target.style.background="#eee";e.target.src=""}}/>
+                : <div style={{width:48,height:48,borderRadius:10,background:item.color||"#eee",flexShrink:0}}/>
+              }
               <div>
                 <div style={{fontSize:13,fontWeight:600,color:C.dark,fontFamily:FB}}>{item.name}</div>
                 <div style={{fontSize:11,color:C.muted,fontFamily:FB}}>{item.brand}</div>
+                {item.link&&<div style={{fontSize:10,color:C.accent,fontFamily:FB}}>🛍 Ships from retailer</div>}
               </div>
             </div>
-            <div style={{fontWeight:700,fontSize:13,color:C.dark,fontFamily:FB}}>${item.price.toFixed(2)}</div>
+            <div style={{fontWeight:700,fontSize:13,color:C.dark,fontFamily:FB}}>${typeof item.price==="number"?item.price.toFixed(2):item.price}</div>
           </div>
         ))}
         <div style={{marginTop:16,background:C.tag,borderRadius:14,padding:14}}>
