@@ -178,10 +178,10 @@ function SnapScreen({onBack, onCheckout}){
 
   const analyzeImage=async(base64, mimeType)=>{
     setStage("analyzing");
-    setSearchStatus("Identifying clothing items...");
+    setSearchStatus("Searching Google Shopping...");
     setError(null);
     try{
-      // Step 1: Claude identifies items
+      // Single call — Google Lens finds real products directly from the photo
       const resp=await fetch("/api/analyze",{
         method:"POST",
         headers:{"Content-Type":"application/json"},
@@ -189,63 +189,27 @@ function SnapScreen({onBack, onCheckout}){
       });
       const data=await resp.json();
       if(!resp.ok) throw new Error(data.error||"Failed");
-
-      setSearchStatus("Finding real products across retailers...");
-
-      // Step 2: Search real products for each item
-      const itemsWithProducts=await Promise.all(
-        data.items.map(async(item,i)=>{
-          try{
-            const searchResp=await fetch("/api/search",{
-              method:"POST",
-              headers:{"Content-Type":"application/json"},
-              body:JSON.stringify({query:`${item.name} ${item.brand} women fashion`})
-            });
-            const searchData=await searchResp.json();
-            const topResult=searchData.results?.[0];
-            return{
-              ...item,
-              id:Date.now()+i,
-              checked:true,
-              match:`${Math.floor(88+Math.random()*10)}%`,
-              // Use real product data if found, fallback to AI data
-              realName: topResult?.title || item.name,
-              realPrice: topResult?.price || `$${item.price.toFixed(2)}`,
-              realImage: topResult?.image || null,
-              realLink: topResult?.link || null,
-              realSource: topResult?.source || item.brand,
-              allResults: searchData.results || [],
-            };
-          }catch{
-            return{...item,id:Date.now()+i,checked:true,match:"88%",allResults:[]};
-          }
-        })
-      );
-
-      setItems(itemsWithProducts);
+      if(!data.items||data.items.length===0) throw new Error("No products found");
+      setItems(data.items);
       setStage("result");
     }catch(err){
-      setError("Couldn't analyze image. Please try another photo.");
+      setError("Couldn't find products. Try a clearer outfit photo.");
       setStage("upload");
     }
   };
 
-  const selected=items.filter(i=>i.checked);
-  const total=selected.reduce((s,i)=>{
-    const price=parseFloat((i.realPrice||"").replace(/[^0-9.]/g,""))||i.price||0;
-    return s+price;
-  },0);
-  const toggle=id=>setItems(items.map(i=>i.id===id?{...i,checked:!i.checked}:i));
-
-  // Build checkout items with real product data
   const buildCheckoutItems=()=>selected.map(item=>({
     ...item,
-    name: item.realName||item.name,
+    name: item.name,
     brand: item.realSource||item.brand,
-    price: parseFloat((item.realPrice||"").replace(/[^0-9.]/g,""))||item.price||0,
+    price: typeof item.price==="number"?item.price:parseFloat((item.realPrice||"0").replace(/[^0-9.]/g,""))||0,
     image: item.realImage,
     link: item.realLink,
   }));
+
+  const selected=items.filter(i=>i.checked);
+  const total=selected.reduce((s,i)=>s+(typeof i.price==="number"?i.price:parseFloat((i.realPrice||"0").replace(/[^0-9.]/g,""))||0),0);
+  const toggle=id=>setItems(items.map(i=>i.id===id?{...i,checked:!i.checked}:i));
 
   return(
     <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
@@ -277,9 +241,9 @@ function SnapScreen({onBack, onCheckout}){
           <div style={{textAlign:"center",padding:"30px 20px"}}>
             {preview&&<img src={preview} style={{width:"100%",borderRadius:16,marginBottom:20,maxHeight:220,objectFit:"cover"}}/>}
             <div style={{fontSize:56,marginBottom:16,display:"inline-block",animation:"spin 1s linear infinite"}}>🔍</div>
-            <div style={{fontSize:19,fontWeight:800,color:C.dark,fontFamily:FD,marginBottom:8}}>Analyzing outfit...</div>
+            <div style={{fontSize:19,fontWeight:800,color:C.dark,fontFamily:FD,marginBottom:8}}>Searching Google Shopping...</div>
             <div style={{fontSize:13,color:C.accent,fontFamily:FB,fontWeight:600,marginBottom:6}}>{searchStatus}</div>
-            <div style={{fontSize:12,color:C.muted,fontFamily:FB,lineHeight:1.8}}>Finding real products across retailers</div>
+            <div style={{fontSize:12,color:C.muted,fontFamily:FB,lineHeight:1.8}}>Finding exact matches across retailers</div>
             <div style={{marginTop:20,display:"flex",gap:6,justifyContent:"center"}}>
               {[0,1,2].map(i=><div key={i} style={{width:8,height:8,borderRadius:"50%",background:C.accent,animation:`bounce 0.8s ease-in-out ${i*0.2}s infinite alternate`}}/>)}
             </div>
