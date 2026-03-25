@@ -10,41 +10,44 @@ export default async function handler(req, res) {
     const { imageData, mediaType } = req.body;
     if (!imageData) return res.status(400).json({ error: "No image provided" });
 
-    // Upload image to get a public URL first (SerpAPI needs a URL, not base64)
-    // We use a temporary image hosting approach via data URL encoded as multipart
-    const imageBuffer = Buffer.from(imageData, "base64");
-    const mimeType = mediaType || "image/jpeg";
+    // Check env vars
+    if (!process.env.IMGBB_KEY) return res.status(500).json({ error: "IMGBB_KEY not set in environment variables" });
+    if (!process.env.SERPAPI_KEY) return res.status(500).json({ error: "SERPAPI_KEY not set in environment variables" });
 
-    // Use SerpAPI Google Lens to search by image directly
-    const formData = new FormData();
-    const blob = new Blob([imageBuffer], { type: mimeType });
-    formData.append("image", blob, "outfit.jpg");
+    // Step 1: Upload image to imgbb
+    const imgbbForm = new URLSearchParams();
+    imgbbForm.append("key", process.env.IMGBB_KEY);
+    imgbbForm.append("image", imageData);
 
-    // SerpAPI Google Lens endpoint with image upload
+    const imgbbResp = await fetch("https://api.imgbb.com/1/upload", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: imgbbForm.toString(),
+    });
+
+    const imgbbData = await imgbbResp.json();
+    if (!imgbbData.success) return res.status(500).json({ error: "imgbb upload failed: " + JSON.stringify(imgbbData) });
+
+    const imageUrl = imgbbData.data.url;
+
+    // Step 2: Google Lens via SerpAPI
     const params = new URLSearchParams({
       api_key: process.env.SERPAPI_KEY,
       engine: "google_lens",
+      url: imageUrl,
     });
 
-    const response = await fetch(`https://serpapi.com/search?${params}`, {
-      method: "POST",
-      body: formData,
-    });
+    const lensResp = await fetch(`https://serpapi.com/search?${params}`);
+    const lensData = await lensResp.json();
 
-    const data = await response.json();
+    if (lensData.error) return res.status(500).json({ error: "SerpAPI error: " + lensData.error });
 
-    if (!response.ok || data.error) {
-      return res.status(500).json({ error: data.error || "Lens search failed" });
-    }
+    const visualMatches = lensData.visual_matches || [];
+    if (visualMatches.length === 0) return res.status(200).json({ items: [], debug: "No visual matches returned" });
 
-    // Extract visual matches — these are real products Google found
-    const visualMatches = data.visual_matches || [];
-    const knowledgeGraph = data.knowledge_graph || [];
-
-    // Build items from visual matches with shopping results
     const items = visualMatches.slice(0, 6).map((match, i) => ({
       id: Date.now() + i,
-      name: match.title || `Fashion Item ${i + 1}`,
+      name: match.title || `Item ${i + 1}`,
       brand: match.source || "Various",
       price: match.price?.extracted_value || Math.floor(29 + Math.random() * 120),
       realPrice: match.price?.value || null,
@@ -60,6 +63,6 @@ export default async function handler(req, res) {
 
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: "Failed to analyze image: " + err.message });
+    return res.status(500).json({ error: err.message });
   }
 }

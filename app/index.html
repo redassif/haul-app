@@ -189,11 +189,11 @@ function SnapScreen({onBack, onCheckout}){
       });
       const data=await resp.json();
       if(!resp.ok) throw new Error(data.error||"Failed");
-      if(!data.items||data.items.length===0) throw new Error("No products found");
+      if(!data.items||data.items.length===0) throw new Error("No products found — try a clearer photo of an outfit");
       setItems(data.items);
       setStage("result");
     }catch(err){
-      setError("Couldn't find products. Try a clearer outfit photo.");
+      setError(err.message||"Couldn't find products. Try a clearer outfit photo.");
       setStage("upload");
     }
   };
