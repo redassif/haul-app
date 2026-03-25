@@ -9,79 +9,102 @@ export default async function handler(req, res) {
   try {
     const { imageData, mediaType } = req.body;
     if (!imageData) return res.status(400).json({ error: "No image provided" });
-
-    if (!process.env.ANTHROPIC_API_KEY) return res.status(500).json({ error: "ANTHROPIC_API_KEY not set" });
+    if (!process.env.XIMILAR_KEY) return res.status(500).json({ error: "XIMILAR_KEY not set" });
     if (!process.env.SERPAPI_KEY) return res.status(500).json({ error: "SERPAPI_KEY not set" });
 
-    // Step 1: Claude generates precise search queries for each item
-    const claudeResp = await fetch("https://api.anthropic.com/v1/messages", {
+    // Step 1: Ximilar detects and tags every fashion item in the photo
+    const ximilarResp = await fetch("https://api.ximilar.com/tagging/fashion/v2/detect_tags", {
       method: "POST",
       headers: {
+        "Authorization": `Token ${process.env.XIMILAR_KEY}`,
         "Content-Type": "application/json",
-        "x-api-key": process.env.ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 1000,
-        messages: [{
-          role: "user",
-          content: [
-            {
-              type: "image",
-              source: {
-                type: "base64",
-                media_type: mediaType || "image/jpeg",
-                data: imageData,
-              },
-            },
-            {
-              type: "text",
-              text: `You are a fashion expert analyzing an outfit photo for a shopping app.
-
-Identify each clearly visible clothing item and accessory in this image.
-
-For each item return a very specific Google Shopping search query that would find that exact product — include color, style, cut, material if visible, and gender.
-
-Return ONLY a valid JSON array, no markdown, no backticks. Format:
-[
-  {
-    "name": "Short display name (e.g. Beige Oversized Blazer)",
-    "searchQuery": "beige oversized double breasted blazer women",
-    "color": "#hex color code"
-  }
-]
-
-Rules:
-- Maximum 5 items
-- Only clearly visible items
-- Make search queries as specific as possible — include descriptive adjectives
-- Never include brand names in searchQuery unless logo is clearly visible
-- Include gender (women/men) in every searchQuery`
-            },
-          ],
-        }],
+        records: [{ "_base64": imageData }]
       }),
     });
 
-    const claudeData = await claudeResp.json();
-    if (!claudeResp.ok) return res.status(500).json({ error: "Claude error: " + claudeData.error?.message });
+    const ximilarData = await ximilarResp.json();
+    if (!ximilarResp.ok) return res.status(500).json({ error: "Ximilar error: " + JSON.stringify(ximilarData) });
 
-    const text = claudeData.content[0].text.trim();
-    const identified = JSON.parse(text);
+    const record = ximilarData.records?.[0];
+    if (!record) return res.status(200).json({ items: [] });
 
-    if (!identified || identified.length === 0) {
-      return res.status(200).json({ items: [] });
-    }
+    // Extract detected objects (individual clothing items)
+    const objects = record._objects || [];
+    if (objects.length === 0) return res.status(200).json({ items: [], debug: "No objects detected" });
 
-    // Step 2: Search each item on Google Shopping in parallel
+    // Step 2: For each detected item, build a precise search query from tags
+    const buildQuery = (obj) => {
+      const tags = obj._tags || {};
+      const parts = [];
+
+      // Color
+      const color = tags.Color?.[0]?.name;
+      if (color) parts.push(color);
+
+      // Pattern/Print
+      const pattern = tags["Pattern/print"]?.[0]?.name;
+      if (pattern && pattern !== "plain") parts.push(pattern);
+
+      // Material
+      const material = tags.Material?.[0]?.name;
+      if (material) parts.push(material);
+
+      // Subcategory (most specific — e.g. "sweat pants", "bomber jacket")
+      const subcat = tags.Subcategory?.[0]?.name;
+      if (subcat) parts.push(subcat);
+      else {
+        // Fallback to category
+        const cat = tags.Category?.[0]?.name?.split("/")?.[1];
+        if (cat) parts.push(cat);
+      }
+
+      // Style
+      const style = tags.Style?.[0]?.name;
+      if (style && style !== "casual") parts.push(style);
+
+      // Gender
+      const gender = tags.Gender?.[0]?.name || "women";
+      parts.push(gender);
+
+      return parts.join(" ");
+    };
+
+    const buildDisplayName = (obj) => {
+      const tags = obj._tags || {};
+      const color = tags.Color?.[0]?.name || "";
+      const subcat = tags.Subcategory?.[0]?.name || tags.Category?.[0]?.name?.split("/")?.[1] || "Item";
+      return `${color} ${subcat}`.trim()
+        .split(" ")
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(" ");
+    };
+
+    const getColorHex = (obj) => {
+      const colorName = obj._tags?.Color?.[0]?.name?.toLowerCase() || "";
+      const colorMap = {
+        black: "#1A1A1A", white: "#F5F5F5", grey: "#888888", gray: "#888888",
+        blue: "#2C5F8A", navy: "#1A2A5E", red: "#CC2222", pink: "#F4A0A0",
+        green: "#2A6A2A", beige: "#C8B89A", cream: "#F5F0E0", brown: "#6B3F1F",
+        yellow: "#F5D020", orange: "#E8701A", purple: "#6B2D8B", burgundy: "#8B1A2A",
+        khaki: "#8B7D3A", denim: "#4A6FA5", camel: "#C19A49",
+      };
+      return colorMap[colorName] || "#888888";
+    };
+
+    // Step 3: Search Google Shopping for each item in parallel
     const items = await Promise.all(
-      identified.map(async (item, i) => {
+      objects.slice(0, 5).map(async (obj, i) => {
+        const searchQuery = buildQuery(obj);
+        const displayName = buildDisplayName(obj);
+        const colorHex = getColorHex(obj);
+
         try {
           const params = new URLSearchParams({
             api_key: process.env.SERPAPI_KEY,
             engine: "google_shopping",
-            q: item.searchQuery,
+            q: searchQuery,
             num: 5,
             gl: "us",
             hl: "en",
@@ -96,18 +119,17 @@ Rules:
 
           return {
             id: Date.now() + i,
-            name: item.name,
-            searchQuery: item.searchQuery,
-            color: item.color || "#888",
+            name: displayName,
+            searchQuery,
+            color: colorHex,
             checked: true,
-            match: `${Math.floor(88 + Math.random() * 10)}%`,
+            match: `${Math.round((obj.prob || 0.9) * 100)}%`,
             realName: top.title,
             realPrice: top.price,
             realImage: top.thumbnail,
             realLink: top.link,
             realSource: top.source,
             price: top.extracted_price || Math.floor(29 + Math.random() * 120),
-            // Keep top 3 alternatives for user to browse
             alternatives: results.slice(1, 4).map(r => ({
               title: r.title,
               price: r.price,
