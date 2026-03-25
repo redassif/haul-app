@@ -257,16 +257,21 @@ function SnapScreen({onBack, onCheckout}){
               <button onClick={()=>setItems(items.map(i=>({...i,checked:true})))} style={{fontSize:12,color:C.accent,fontFamily:FB,fontWeight:700,background:"none",border:"none",cursor:"pointer"}}>Select All</button>
             </div>
             {items.map(item=>(
-              <div key={item.id} onClick={()=>toggle(item.id)} style={{display:"flex",alignItems:"center",gap:10,background:item.checked?C.accentLight:C.tag,border:`1.5px solid ${item.checked?C.accent:C.border}`,borderRadius:14,padding:12,marginBottom:8,cursor:"pointer"}}>
+              <div key={item.id} onClick={()=>toggle(item.id)} style={{display:"flex",alignItems:"center",gap:10,background:item.checked?C.accentLight:C.tag,border:`1.5px solid ${item.checked?C.accent:C.border}`,borderRadius:14,padding:10,marginBottom:8,cursor:"pointer"}}>
                 <div style={{width:20,height:20,borderRadius:5,border:`2px solid ${item.checked?C.accent:C.border}`,background:item.checked?C.accent:"white",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                   {item.checked&&<span style={{color:"white",fontSize:11,fontWeight:700}}>✓</span>}
                 </div>
-                <Dot col={item.color}/>
-                <div style={{flex:1}}>
-                  <div style={{fontWeight:700,fontSize:13,color:C.dark,fontFamily:FB}}>{item.name}</div>
+                <img
+                  src={`https://loremflickr.com/64/64/${encodeURIComponent(item.imageQuery||item.name)}`}
+                  alt={item.name}
+                  style={{width:52,height:52,borderRadius:10,objectFit:"cover",flexShrink:0,background:item.color}}
+                  onError={e=>{e.target.style.display="none"}}
+                />
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontWeight:700,fontSize:12,color:C.dark,fontFamily:FB,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{item.name}</div>
                   <div style={{fontSize:11,color:C.muted,fontFamily:FB}}>{item.brand} · <span style={{color:"#2D6A4F",fontWeight:600}}>{item.match} match</span></div>
                 </div>
-                <div style={{fontWeight:800,fontSize:14,color:C.dark,fontFamily:FB}}>${item.price.toFixed(2)}</div>
+                <div style={{fontWeight:800,fontSize:13,color:C.dark,fontFamily:FB,flexShrink:0}}>${item.price.toFixed(2)}</div>
               </div>
             ))}
           </>
@@ -326,7 +331,18 @@ function CheckoutScreen({items,total,onDone}){
         <div style={{fontSize:11,fontWeight:700,color:C.dark,fontFamily:FB,textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Order Summary</div>
         {items.map(item=>(
           <div key={item.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
-            <div style={{display:"flex",gap:8,alignItems:"center"}}><Dot col={item.color}/><div><div style={{fontSize:13,fontWeight:600,color:C.dark,fontFamily:FB}}>{item.name}</div><div style={{fontSize:11,color:C.muted,fontFamily:FB}}>{item.brand}</div></div></div>
+            <div style={{display:"flex",gap:10,alignItems:"center"}}>
+              <img
+                src={`https://loremflickr.com/64/64/${encodeURIComponent(item.imageQuery||item.name)}`}
+                alt={item.name}
+                style={{width:48,height:48,borderRadius:10,objectFit:"cover",flexShrink:0,background:item.color}}
+                onError={e=>{e.target.style.background=item.color;e.target.src=""}}
+              />
+              <div>
+                <div style={{fontSize:13,fontWeight:600,color:C.dark,fontFamily:FB}}>{item.name}</div>
+                <div style={{fontSize:11,color:C.muted,fontFamily:FB}}>{item.brand}</div>
+              </div>
+            </div>
             <div style={{fontWeight:700,fontSize:13,color:C.dark,fontFamily:FB}}>${item.price.toFixed(2)}</div>
           </div>
         ))}

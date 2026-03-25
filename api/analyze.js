@@ -33,7 +33,7 @@ export default async function handler(req, res) {
             },
             {
               type: "text",
-              text: "You are a fashion AI for a shopping app. Analyze this outfit image and identify every visible clothing item and accessory.\n\nReturn ONLY a valid JSON array, no other text, no markdown, no backticks. Each item should have:\n- name: specific item name (e.g. \"Oversized Beige Blazer\")\n- brand: most likely brand (e.g. \"Zara\", \"H&M\", \"ASOS\", \"Nike\", \"Levi's\", \"Mango\", \"Shein\", \"Urban Outfitters\")\n- price: realistic retail price as a number (no $ sign)\n- color: hex color code of the item\n\nIdentify between 2 and 6 items. Only include clearly visible clothing pieces and accessories.",
+              text: "You are a fashion AI for a shopping app. Analyze this outfit image and identify every visible clothing item and accessory.\n\nReturn ONLY a valid JSON array, no other text, no markdown, no backticks. Each item should have:\n- name: specific item name (e.g. \"Oversized Beige Blazer\")\n- brand: most likely brand (e.g. \"Zara\", \"H&M\", \"ASOS\", \"Nike\", \"Levi's\", \"Mango\", \"Shein\", \"Urban Outfitters\")\n- price: realistic retail price as a number (no $ sign)\n- color: hex color code of the item\n- imageQuery: a short 2-4 word search term to find a product photo of this item (e.g. \"beige oversized blazer\", \"white leather sneakers\", \"straight leg jeans\")\n\nIdentify between 2 and 6 items. Only include clearly visible clothing pieces and accessories.",
             },
           ],
         }],
