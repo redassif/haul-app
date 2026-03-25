@@ -67,7 +67,8 @@ function FeedScreen({onOpen,onSnap,onProfile}){
             <div key={h.id} onClick={()=>onOpen(h)} style={{background:C.card,borderRadius:20,overflow:"hidden",border:`1px solid ${C.border}`,marginBottom:18,boxShadow:"0 4px 24px rgba(26,18,9,0.06)",cursor:"pointer"}}>
               <div style={{height:190,background:h.bg,display:"flex",alignItems:"center",justifyContent:"center",position:"relative",overflow:"hidden"}}>
                 {h.id===1
-                  ? <video src="haul.mp4" style={{width:"100%",height:"100%",objectFit:"cover",position:"absolute",inset:0}} autoPlay muted loop playsInline/>
+                  ? <><video src="haul.mp4" style={{width:"100%",height:"100%",objectFit:"cover",position:"absolute",inset:0}} autoPlay muted loop playsInline/>
+                  <div style={{position:"absolute",bottom:8,right:8,width:44,height:20,borderRadius:4,background:"rgba(0,0,0,0.55)"}}/></>
                   : <div style={{fontSize:60,opacity:0.5}}>{h.thumb}</div>
                 }
                 <div style={{position:"absolute",bottom:10,left:10,right:10,display:"flex",justifyContent:"space-between"}}>
@@ -112,7 +113,8 @@ function DetailScreen({haul,onBack,onCheckout}){
     <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
       <div style={{height:220,background:haul.bg,position:"relative",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,overflow:"hidden"}}>
         {haul.id===1
-          ? <video src="haul.mp4" style={{width:"100%",height:"100%",objectFit:"cover",position:"absolute",inset:0}} autoPlay muted loop playsInline/>
+          ? <><video src="haul.mp4" style={{width:"100%",height:"100%",objectFit:"cover",position:"absolute",inset:0}} autoPlay muted loop playsInline/>
+          <div style={{position:"absolute",bottom:8,right:8,width:44,height:20,borderRadius:4,background:"rgba(0,0,0,0.55)"}}/></>
           : <div style={{fontSize:64,opacity:0.4}}>{haul.thumb}</div>
         }
         <button onClick={onBack} style={{position:"absolute",top:16,left:16,width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,0.9)",border:"none",fontSize:16,cursor:"pointer"}}>←</button>
@@ -154,16 +156,53 @@ function DetailScreen({haul,onBack,onCheckout}){
   );
 }
 
-function SnapScreen({onBack}){
+function SnapScreen({onBack, onCheckout}){
   const [stage,setStage]=useState("upload");
-  const items=[
-    {id:1,name:"Cream Knit Sweater",brand:"Zara",price:59.99,color:"#F5F0E8",match:"98%"},
-    {id:2,name:"Straight Leg Jeans",brand:"Levi's",price:79.99,color:"#4A6FA5",match:"95%"},
-    {id:3,name:"White Leather Sneakers",brand:"Nike",price:110.00,color:"#E0E0E0",match:"91%"},
-    {id:4,name:"Gold Hoop Earrings",brand:"ASOS",price:18.99,color:"#C9A84C",match:"89%"},
-  ];
-  const total=items.reduce((s,i)=>s+i.price,0);
-  const handleUpload=()=>{setStage("analyzing");setTimeout(()=>setStage("result"),2200);};
+  const [preview,setPreview]=useState(null);
+  const [imageData,setImageData]=useState(null);
+  const [items,setItems]=useState([]);
+  const [error,setError]=useState(null);
+  const fileRef=React.useRef();
+
+  const COLORS=["#8B7355","#2C3E50","#4A6FA5","#F5F0E8","#C9A84C","#556B2F","#FF69B4","#E0E0E0","#8B4513","#1A1A1A","#F5F5DC","#C4A882"];
+
+  const handleFile=async(e)=>{
+    const file=e.target.files[0];
+    if(!file)return;
+    const reader=new FileReader();
+    reader.onload=(ev)=>{
+      setPreview(ev.target.result);
+      const base64=ev.target.result.split(",")[1];
+      setImageData(base64);
+      analyzeImage(base64, file.type);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const analyzeImage=async(base64, mimeType)=>{
+    setStage("analyzing");
+    setError(null);
+    try{
+      const resp=await fetch("/api/analyze",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({imageData:base64, mediaType:mimeType||"image/jpeg"})
+      });
+      const data=await resp.json();
+      if(!resp.ok) throw new Error(data.error||"Failed");
+      const withIds=data.items.map((item,i)=>({...item,id:Date.now()+i,checked:true,match:`${Math.floor(88+Math.random()*10)}%`}));
+      setItems(withIds);
+      setStage("result");
+    }catch(err){
+      setError("Couldn't analyze image. Please try another photo.");
+      setStage("upload");
+    }
+  };
+
+  const selected=items.filter(i=>i.checked);
+  const total=selected.reduce((s,i)=>s+i.price,0);
+  const toggle=id=>setItems(items.map(i=>i.id===id?{...i,checked:!i.checked}:i));
+
   return(
     <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
       <div style={{padding:"16px 16px 0",flexShrink:0}}>
@@ -171,21 +210,28 @@ function SnapScreen({onBack}){
           <button onClick={onBack} style={{width:36,height:36,borderRadius:"50%",border:`1px solid ${C.border}`,background:C.tag,fontSize:16,cursor:"pointer"}}>←</button>
           <div>
             <div style={{fontSize:17,fontWeight:800,color:C.dark,fontFamily:FD}}>Snap to Shop</div>
-            <div style={{fontSize:11,color:C.muted,fontFamily:FB}}>Upload any outfit — we'll find every piece</div>
+            <div style={{fontSize:11,color:C.muted,fontFamily:FB}}>Upload any outfit — AI finds every piece</div>
           </div>
         </div>
       </div>
-      <div style={{flex:1,overflowY:"auto",padding:"0 16px 120px"}}>
+
+      <div style={{flex:1,overflowY:"auto",padding:"0 16px 130px"}}>
         {stage==="upload"&&(
-          <div onClick={handleUpload} style={{border:`2px dashed ${C.border}`,borderRadius:20,padding:"44px 20px",textAlign:"center",cursor:"pointer",background:C.tag,marginBottom:16}}>
-            <div style={{fontSize:48,marginBottom:14}}>📸</div>
-            <div style={{fontSize:17,fontWeight:800,color:C.dark,fontFamily:FD,marginBottom:6}}>Upload an outfit photo</div>
-            <div style={{fontSize:13,color:C.muted,fontFamily:FB,lineHeight:1.6}}>Tap to upload a photo.<br/>We'll identify every piece and find where to buy it.</div>
-            <div style={{marginTop:18,display:"inline-block",background:C.accent,color:"white",padding:"10px 22px",borderRadius:20,fontFamily:FB,fontWeight:700,fontSize:13}}>Choose Photo</div>
-          </div>
+          <>
+            {error&&<div style={{background:"#FFF0F0",border:`1px solid #FFCCCC`,borderRadius:12,padding:"10px 14px",marginBottom:12,fontSize:12,color:"#CC3333",fontFamily:FB}}>{error}</div>}
+            <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} style={{display:"none"}}/>
+            <div onClick={()=>fileRef.current.click()} style={{border:`2px dashed ${C.border}`,borderRadius:20,padding:"44px 20px",textAlign:"center",cursor:"pointer",background:C.tag,marginBottom:16}}>
+              <div style={{fontSize:48,marginBottom:14}}>📸</div>
+              <div style={{fontSize:17,fontWeight:800,color:C.dark,fontFamily:FD,marginBottom:6}}>Upload an outfit photo</div>
+              <div style={{fontSize:13,color:C.muted,fontFamily:FB,lineHeight:1.6}}>Tap to choose a photo.<br/>AI identifies every piece instantly.</div>
+              <div style={{marginTop:18,display:"inline-block",background:C.accent,color:"white",padding:"10px 22px",borderRadius:20,fontFamily:FB,fontWeight:700,fontSize:13}}>Choose Photo</div>
+            </div>
+          </>
         )}
+
         {stage==="analyzing"&&(
-          <div style={{textAlign:"center",padding:"50px 20px"}}>
+          <div style={{textAlign:"center",padding:"30px 20px"}}>
+            {preview&&<img src={preview} style={{width:"100%",borderRadius:16,marginBottom:20,maxHeight:220,objectFit:"cover"}}/>}
             <div style={{fontSize:56,marginBottom:16,display:"inline-block",animation:"spin 1s linear infinite"}}>🔍</div>
             <div style={{fontSize:19,fontWeight:800,color:C.dark,fontFamily:FD,marginBottom:8}}>Analyzing outfit...</div>
             <div style={{fontSize:13,color:C.muted,fontFamily:FB,lineHeight:1.8}}>Identifying clothing pieces<br/>Finding best matches across retailers<br/>Preparing your cart</div>
@@ -194,29 +240,46 @@ function SnapScreen({onBack}){
             </div>
           </div>
         )}
+
         {stage==="result"&&(
           <>
-            <div style={{background:"#E8F5E9",borderRadius:14,padding:"12px 14px",marginBottom:16,display:"flex",gap:10,alignItems:"center"}}>
+            {preview&&<img src={preview} style={{width:"100%",borderRadius:16,marginBottom:14,maxHeight:200,objectFit:"cover"}}/>}
+            <div style={{background:"#E8F5E9",borderRadius:14,padding:"12px 14px",marginBottom:14,display:"flex",gap:10,alignItems:"center"}}>
               <span style={{fontSize:18}}>✅</span>
-              <div><div style={{fontSize:13,fontWeight:700,color:"#2D6A4F",fontFamily:FB}}>4 items identified</div><div style={{fontSize:11,color:"#52B788",fontFamily:FB}}>All available · Ships separately</div></div>
+              <div>
+                <div style={{fontSize:13,fontWeight:700,color:"#2D6A4F",fontFamily:FB}}>{items.length} items identified</div>
+                <div style={{fontSize:11,color:"#52B788",fontFamily:FB}}>All available · Ships separately</div>
+              </div>
+              <button onClick={()=>{setStage("upload");setPreview(null);setItems([]);}} style={{marginLeft:"auto",fontSize:11,color:C.muted,background:"none",border:"none",cursor:"pointer",fontFamily:FB}}>Try again</button>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <div style={{fontSize:11,fontWeight:700,color:C.dark,fontFamily:FB,textTransform:"uppercase",letterSpacing:1}}>Items found</div>
+              <button onClick={()=>setItems(items.map(i=>({...i,checked:true})))} style={{fontSize:12,color:C.accent,fontFamily:FB,fontWeight:700,background:"none",border:"none",cursor:"pointer"}}>Select All</button>
             </div>
             {items.map(item=>(
-              <div key={item.id} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:12,marginBottom:8,display:"flex",alignItems:"center",gap:10}}>
+              <div key={item.id} onClick={()=>toggle(item.id)} style={{display:"flex",alignItems:"center",gap:10,background:item.checked?C.accentLight:C.tag,border:`1.5px solid ${item.checked?C.accent:C.border}`,borderRadius:14,padding:12,marginBottom:8,cursor:"pointer"}}>
+                <div style={{width:20,height:20,borderRadius:5,border:`2px solid ${item.checked?C.accent:C.border}`,background:item.checked?C.accent:"white",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                  {item.checked&&<span style={{color:"white",fontSize:11,fontWeight:700}}>✓</span>}
+                </div>
                 <Dot col={item.color}/>
-                <div style={{flex:1}}><div style={{fontWeight:700,fontSize:13,color:C.dark,fontFamily:FB}}>{item.name}</div><div style={{fontSize:11,color:C.muted,fontFamily:FB}}>{item.brand} · <span style={{color:"#2D6A4F",fontWeight:600}}>{item.match} match</span></div></div>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:700,fontSize:13,color:C.dark,fontFamily:FB}}>{item.name}</div>
+                  <div style={{fontSize:11,color:C.muted,fontFamily:FB}}>{item.brand} · <span style={{color:"#2D6A4F",fontWeight:600}}>{item.match} match</span></div>
+                </div>
                 <div style={{fontWeight:800,fontSize:14,color:C.dark,fontFamily:FB}}>${item.price.toFixed(2)}</div>
               </div>
             ))}
           </>
         )}
       </div>
-      {stage==="result"&&(
+
+      {stage==="result"&&selected.length>0&&(
         <div style={{position:"absolute",bottom:0,left:0,right:0,background:"white",borderTop:`1px solid ${C.border}`,padding:"14px 16px 24px",boxShadow:"0 -8px 30px rgba(26,18,9,0.08)"}}>
           <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
-            <div style={{fontSize:12,color:C.muted,fontFamily:FB}}>4 items · 1 checkout</div>
+            <div style={{fontSize:12,color:C.muted,fontFamily:FB}}>{selected.length} item{selected.length!==1?"s":""} · 1 checkout</div>
             <div style={{fontSize:19,fontWeight:800,color:C.dark,fontFamily:FD}}>${total.toFixed(2)}</div>
           </div>
-          <button style={{width:"100%",padding:14,borderRadius:14,background:C.accent,color:"white",border:"none",fontWeight:800,fontSize:14,fontFamily:FB,cursor:"pointer"}}>Buy Full Outfit — 1 Checkout</button>
+          <button onClick={()=>onCheckout(selected,total)} style={{width:"100%",padding:14,borderRadius:14,background:C.accent,color:"white",border:"none",fontWeight:800,fontSize:14,fontFamily:FB,cursor:"pointer"}}>Buy Full Outfit — 1 Checkout</button>
         </div>
       )}
     </div>
@@ -349,7 +412,7 @@ function App(){
         {screen==="feed"&&!haul&&<FeedScreen onOpen={h=>{setHaul(h);}} onSnap={()=>setScreen("snap")} onProfile={()=>setScreen("profile")}/>}
         {screen==="feed"&&haul&&!checkout&&<DetailScreen haul={haul} onBack={()=>setHaul(null)} onCheckout={(items,total)=>{setCheckout({items,total});setScreen("checkout");}}/>}
         {screen==="checkout"&&checkout&&<CheckoutScreen items={checkout.items} total={checkout.total} onDone={()=>{setCheckout(null);setHaul(null);setScreen("feed");}}/>}
-        {screen==="snap"&&<SnapScreen onBack={()=>setScreen("feed")}/>}
+        {screen==="snap"&&<SnapScreen onBack={()=>setScreen("feed")} onCheckout={(items,total)=>{setCheckout({items,total});setScreen("checkout");}}/>}
         {screen==="profile"&&<ProfileScreen/>}
       </div>
       {showNav&&<Nav screen={screen} set={setScreen}/>}

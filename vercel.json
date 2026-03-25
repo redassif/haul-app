@@ -2,5 +2,10 @@
   "buildCommand": "echo done",
   "outputDirectory": ".",
   "framework": null,
-  "devCommand": null
+  "devCommand": null,
+  "functions": {
+    "api/analyze.js": {
+      "runtime": "edge"
+    }
+  }
 }
