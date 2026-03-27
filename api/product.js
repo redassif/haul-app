@@ -8,10 +8,9 @@ export default async function handler(req, res) {
   try {
     const { urls } = req.body;
     if (!urls || !urls.length) return res.status(400).json({ error: "No URLs provided" });
-    if (!process.env.RYE_API_KEY) return res.status(500).json({ error: "RYE_API_KEY not set" });
 
-    // Rye requires the API key to be Base64 encoded
-    const encoded = Buffer.from(process.env.RYE_API_KEY).toString("base64");
+    // Hardcoded for testing — move to env var once confirmed working
+    const RYE_KEY = "RYE/staging-adcde2a158554b26b349";
 
     const results = await Promise.all(
       urls.map(async ({ id, url }) => {
@@ -21,17 +20,16 @@ export default async function handler(req, res) {
             {
               method: "GET",
               headers: {
-                "Authorization": `Basic ${encoded}`,
-                "Content-Type": "application/json",
+                "Authorization": `Basic ${RYE_KEY}`,
               },
             }
           );
 
           const text = await resp.text();
-          console.log(`Rye response for ${url}:`, resp.status, text.slice(0, 300));
+          console.log(`Rye ${resp.status} for ${url.slice(0,50)}:`, text.slice(0, 200));
 
           if (!resp.ok) {
-            return { id, success: false, error: `HTTP ${resp.status}: ${text.slice(0, 100)}` };
+            return { id, success: false, error: `HTTP ${resp.status}: ${text.slice(0,100)}` };
           }
 
           const data = JSON.parse(text);
