@@ -313,19 +313,21 @@ function SnapScreen({onBack, onCheckout}){
 }
 
 
+function Field({label,k,placeholder,half,buyer,setBuyer}){
+  return(
+    <div style={{flex:half?"1 1 45%":"1 1 100%",marginBottom:10}}>
+      <div style={{fontSize:11,color:C.muted,fontFamily:FB,marginBottom:4}}>{label}</div>
+      <input value={buyer[k]} onChange={e=>setBuyer(b=>({...b,[k]:e.target.value}))} placeholder={placeholder} style={{width:"100%",padding:"10px 12px",borderRadius:10,border:`1px solid ${C.border}`,background:"white",fontSize:13,fontFamily:FB,color:C.dark,outline:"none"}}/>
+    </div>
+  );
+}
+
 function CheckoutScreen({items,total,onDone}){
   const [stage,setStage]=useState("info"); // info → review → processing → done → error
   const [orders,setOrders]=useState([]);
   const [error,setError]=useState(null);
   const [buyer,setBuyer]=useState({firstName:"",lastName:"",email:"",phone:"",address1:"",address2:"",city:"",province:"",postalCode:"",country:"US"});
   const retailers=[...new Set(items.map(i=>i.brand))];
-
-  const Field=({label,k,placeholder,half})=>(
-    <div style={{flex:half?"1 1 45%":"1 1 100%",marginBottom:10}}>
-      <div style={{fontSize:11,color:C.muted,fontFamily:FB,marginBottom:4}}>{label}</div>
-      <input value={buyer[k]} onChange={e=>setBuyer(b=>({...b,[k]:e.target.value}))} placeholder={placeholder} style={{width:"100%",padding:"10px 12px",borderRadius:10,border:`1px solid ${C.border}`,background:"white",fontSize:13,fontFamily:FB,color:C.dark,outline:"none"}}/>
-    </div>
-  );
 
   const infoComplete=buyer.firstName&&buyer.lastName&&buyer.email&&buyer.phone&&buyer.address1&&buyer.city&&buyer.province&&buyer.postalCode;
 
@@ -400,16 +402,16 @@ function CheckoutScreen({items,total,onDone}){
       </div>
       <div style={{flex:1,overflowY:"auto",padding:"0 16px 140px"}}>
         <div style={{display:"flex",flexWrap:"wrap",gap:"0 10px"}}>
-          <Field label="First name" k="firstName" placeholder="Jane" half/>
-          <Field label="Last name" k="lastName" placeholder="Doe" half/>
-          <Field label="Email" k="email" placeholder="jane@email.com"/>
-          <Field label="Phone" k="phone" placeholder="+1 212 555 0100"/>
-          <Field label="Address" k="address1" placeholder="123 Main St"/>
-          <Field label="Apt / Suite (optional)" k="address2" placeholder="Apt 4B"/>
-          <Field label="City" k="city" placeholder="New York" half/>
-          <Field label="State" k="province" placeholder="NY" half/>
-          <Field label="ZIP Code" k="postalCode" placeholder="10001" half/>
-          <Field label="Country" k="country" placeholder="US" half/>
+          <Field label="First name" k="firstName" placeholder="Jane" half buyer={buyer} setBuyer={setBuyer}/>
+          <Field label="Last name" k="lastName" placeholder="Doe" half buyer={buyer} setBuyer={setBuyer}/>
+          <Field label="Email" k="email" placeholder="jane@email.com" buyer={buyer} setBuyer={setBuyer}/>
+          <Field label="Phone" k="phone" placeholder="+1 212 555 0100" buyer={buyer} setBuyer={setBuyer}/>
+          <Field label="Address" k="address1" placeholder="123 Main St" buyer={buyer} setBuyer={setBuyer}/>
+          <Field label="Apt / Suite (optional)" k="address2" placeholder="Apt 4B" buyer={buyer} setBuyer={setBuyer}/>
+          <Field label="City" k="city" placeholder="New York" half buyer={buyer} setBuyer={setBuyer}/>
+          <Field label="State" k="province" placeholder="NY" half buyer={buyer} setBuyer={setBuyer}/>
+          <Field label="ZIP Code" k="postalCode" placeholder="10001" half buyer={buyer} setBuyer={setBuyer}/>
+          <Field label="Country" k="country" placeholder="US" half buyer={buyer} setBuyer={setBuyer}/>
         </div>
       </div>
       <div style={{position:"absolute",bottom:0,left:0,right:0,background:"white",borderTop:`1px solid ${C.border}`,padding:"14px 16px 24px",boxShadow:"0 -8px 30px rgba(26,18,9,0.08)"}}>
