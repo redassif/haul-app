@@ -20,7 +20,7 @@ export default async function handler(req, res) {
           const resp = await fetch(RYE_ENDPOINT, {
             method: "POST",
             headers: {
-              "Authorization": `Basic ${encoded}`,
+              "Authorization": `Bearer ${process.env.RYE_API_KEY}`,
               "Content-Type": "application/json",
             },
             body: JSON.stringify({

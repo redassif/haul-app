@@ -9,8 +9,7 @@ export default async function handler(req, res) {
     const { urls } = req.body;
     if (!urls || !urls.length) return res.status(400).json({ error: "No URLs provided" });
 
-    // Hardcoded for testing — move to env var once confirmed working
-    const RYE_KEY = "RYE/staging-adcde2a158554b26b349";
+    const RYE_KEY = process.env.RYE_API_KEY || "RYE/staging-adcde2a158554b26b349";
 
     const results = await Promise.all(
       urls.map(async ({ id, url }) => {
@@ -20,13 +19,13 @@ export default async function handler(req, res) {
             {
               method: "GET",
               headers: {
-                "Authorization": `Basic ${RYE_KEY}`,
+                "Authorization": `Bearer ${RYE_KEY}`,
               },
             }
           );
 
           const text = await resp.text();
-          console.log(`Rye ${resp.status} for ${url.slice(0,50)}:`, text.slice(0, 200));
+          console.log(`Rye ${resp.status} for ${url.slice(0,50)}:`, text.slice(0, 300));
 
           if (!resp.ok) {
             return { id, success: false, error: `HTTP ${resp.status}: ${text.slice(0,100)}` };
