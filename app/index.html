@@ -112,6 +112,7 @@ function FeedScreen({onOpen,onSnap,onProfile}){
 function DetailScreen({haul,onBack,onCheckout}){
   const [items,setItems]=useState(haul.items);
   const [loadingPrices,setLoadingPrices]=useState(false);
+  const [debugMsg,setDebugMsg]=useState(null);
   const selected=items.filter(i=>i.checked);
   const total=selected.reduce((s,i)=>s+i.price,0);
   const toggle=id=>setItems(items.map(i=>i.id===id?{...i,checked:!i.checked}:i));
@@ -121,6 +122,7 @@ function DetailScreen({haul,onBack,onCheckout}){
     const itemsWithLinks=haul.items.filter(i=>i.link);
     if(itemsWithLinks.length===0) return;
     setLoadingPrices(true);
+    setDebugMsg("Calling /api/product...");
     fetch("/api/product",{
       method:"POST",
       headers:{"Content-Type":"application/json"},
@@ -128,24 +130,25 @@ function DetailScreen({haul,onBack,onCheckout}){
     })
     .then(r=>r.json())
     .then(data=>{
+      setDebugMsg("Rye: "+JSON.stringify(data).slice(0,200));
       if(data.products){
         setItems(prev=>prev.map(item=>{
           const real=data.products.find(p=>p.id===item.id);
-          if(real&&!real.error){
+          if(real&&real.success&&real.price){
             return{
               ...item,
               name: real.name||item.name,
               price: real.price||item.price,
               image: real.image||item.image,
               brand: real.brand||item.brand,
-              realPrice: real.priceDisplay||real.displayPrice,
+              realPrice: real.priceDisplay,
             };
           }
           return item;
         }));
       }
     })
-    .catch(()=>{})
+    .catch(err=>setDebugMsg("Error: "+err.message))
     .finally(()=>setLoadingPrices(false));
   },[haul.id]);
   return(
@@ -176,6 +179,9 @@ function DetailScreen({haul,onBack,onCheckout}){
             <div style={{width:8,height:8,borderRadius:"50%",background:C.accent,animation:"bounce 0.8s ease-in-out infinite alternate"}}/>
             <div style={{fontSize:12,color:C.accent,fontFamily:FB,fontWeight:600}}>Fetching real prices from retailers...</div>
           </div>
+        )}
+        {!loadingPrices&&debugMsg&&(
+          <div style={{background:"#FFF8E8",border:"1px solid #E8D080",borderRadius:12,padding:"8px 12px",marginBottom:12,fontSize:10,color:"#5A4800",fontFamily:FB,wordBreak:"break-all"}}>{debugMsg}</div>
         )}
         {items.map(item=>(
           <div key={item.id} onClick={()=>toggle(item.id)} style={{display:"flex",alignItems:"center",gap:10,background:item.checked?C.accentLight:C.tag,border:`1.5px solid ${item.checked?C.accent:C.border}`,borderRadius:14,padding:12,marginBottom:8,cursor:"pointer"}}>
