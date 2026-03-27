@@ -111,9 +111,43 @@ function FeedScreen({onOpen,onSnap,onProfile}){
 
 function DetailScreen({haul,onBack,onCheckout}){
   const [items,setItems]=useState(haul.items);
+  const [loadingPrices,setLoadingPrices]=useState(false);
   const selected=items.filter(i=>i.checked);
   const total=selected.reduce((s,i)=>s+i.price,0);
   const toggle=id=>setItems(items.map(i=>i.id===id?{...i,checked:!i.checked}:i));
+
+  // Fetch real prices from Rye if items have links
+  React.useEffect(()=>{
+    const itemsWithLinks=haul.items.filter(i=>i.link);
+    if(itemsWithLinks.length===0) return;
+    setLoadingPrices(true);
+    fetch("/api/product",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({urls:itemsWithLinks.map(i=>({id:i.id,url:i.link}))})
+    })
+    .then(r=>r.json())
+    .then(data=>{
+      if(data.products){
+        setItems(prev=>prev.map(item=>{
+          const real=data.products.find(p=>p.id===item.id);
+          if(real&&!real.error){
+            return{
+              ...item,
+              name: real.name||item.name,
+              price: real.price||item.price,
+              image: real.image||item.image,
+              brand: real.brand||item.brand,
+              realPrice: real.priceDisplay||real.displayPrice,
+            };
+          }
+          return item;
+        }));
+      }
+    })
+    .catch(()=>{})
+    .finally(()=>setLoadingPrices(false));
+  },[haul.id]);
   return(
     <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
       <div style={{height:220,background:haul.bg,position:"relative",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,overflow:"hidden"}}>
@@ -137,14 +171,26 @@ function DetailScreen({haul,onBack,onCheckout}){
           <div style={{fontSize:11,fontWeight:700,color:C.dark,fontFamily:FB,textTransform:"uppercase",letterSpacing:1}}>Items in this haul</div>
           <button onClick={()=>setItems(items.map(i=>({...i,checked:true})))} style={{fontSize:12,color:C.accent,fontFamily:FB,fontWeight:700,background:"none",border:"none",cursor:"pointer"}}>Select All</button>
         </div>
+        {loadingPrices&&(
+          <div style={{background:C.accentLight,border:`1px solid ${C.accent}`,borderRadius:12,padding:"10px 14px",marginBottom:12,display:"flex",gap:8,alignItems:"center"}}>
+            <div style={{width:8,height:8,borderRadius:"50%",background:C.accent,animation:"bounce 0.8s ease-in-out infinite alternate"}}/>
+            <div style={{fontSize:12,color:C.accent,fontFamily:FB,fontWeight:600}}>Fetching real prices from retailers...</div>
+          </div>
+        )}
         {items.map(item=>(
           <div key={item.id} onClick={()=>toggle(item.id)} style={{display:"flex",alignItems:"center",gap:10,background:item.checked?C.accentLight:C.tag,border:`1.5px solid ${item.checked?C.accent:C.border}`,borderRadius:14,padding:12,marginBottom:8,cursor:"pointer"}}>
             <div style={{width:20,height:20,borderRadius:5,border:`2px solid ${item.checked?C.accent:C.border}`,background:item.checked?C.accent:"white",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
               {item.checked&&<span style={{color:"white",fontSize:12,fontWeight:700}}>✓</span>}
             </div>
-            <Dot col={item.color}/>
-            <div style={{flex:1}}><div style={{fontWeight:700,fontSize:13,color:C.dark,fontFamily:FB}}>{item.name}</div><div style={{fontSize:11,color:C.muted,fontFamily:FB}}>{item.brand}</div></div>
-            <div style={{fontWeight:800,fontSize:14,color:C.dark,fontFamily:FB}}>${item.price.toFixed(2)}</div>
+            {item.image
+              ? <img src={item.image} alt={item.name} style={{width:44,height:44,borderRadius:10,objectFit:"cover",flexShrink:0}} onError={e=>{e.target.style.display="none"}}/>
+              : <Dot col={item.color}/>
+            }
+            <div style={{flex:1}}>
+              <div style={{fontWeight:700,fontSize:13,color:C.dark,fontFamily:FB}}>{item.name}</div>
+              <div style={{fontSize:11,color:C.muted,fontFamily:FB}}>{item.brand}</div>
+            </div>
+            <div style={{fontWeight:800,fontSize:14,color:C.dark,fontFamily:FB}}>{item.realPrice||`$${item.price.toFixed(2)}`}</div>
           </div>
         ))}
       </div>
