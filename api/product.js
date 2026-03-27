@@ -33,11 +33,32 @@ export default async function handler(req, res) {
 
           const data = JSON.parse(text);
 
-          const price = data.price?.amountSubunits != null
-            ? data.price.amountSubunits / 100
-            : data.price?.value || null;
+          // Rye can return price in multiple formats — try all of them
+          let price = null;
+          let priceDisplay = null;
 
-          const priceDisplay = data.price?.displayValue || (price ? `$${price.toFixed(2)}` : null);
+          if (data.price != null) {
+            if (typeof data.price === "number") {
+              price = data.price;
+            } else if (data.price.amountSubunits != null && data.price.amountSubunits > 0) {
+              price = data.price.amountSubunits / 100;
+            } else if (data.price.value != null && data.price.value > 0) {
+              price = data.price.value;
+            } else if (data.price.amount != null && data.price.amount > 0) {
+              price = data.price.amount;
+            }
+            priceDisplay = data.price.displayValue || data.price.formatted || null;
+          }
+
+          // Also check top-level price fields
+          if (!price && data.priceRange?.minVariantPrice?.amount) {
+            price = parseFloat(data.priceRange.minVariantPrice.amount);
+          }
+          if (!priceDisplay && price) {
+            priceDisplay = `$${price.toFixed(2)}`;
+          }
+
+          console.log("Price data:", JSON.stringify(data.price), "parsed:", price);
 
           const image = data.images?.find(i => i.isFeatured)?.url
             || data.images?.[0]?.url
