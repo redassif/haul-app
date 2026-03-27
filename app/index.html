@@ -314,43 +314,121 @@ function SnapScreen({onBack, onCheckout}){
 
 
 function CheckoutScreen({items,total,onDone}){
-  const [stage,setStage]=useState("review");
+  const [stage,setStage]=useState("info"); // info → review → processing → done → error
+  const [orders,setOrders]=useState([]);
+  const [error,setError]=useState(null);
+  const [buyer,setBuyer]=useState({firstName:"",lastName:"",email:"",phone:"",address1:"",address2:"",city:"",province:"",postalCode:"",country:"US"});
   const retailers=[...new Set(items.map(i=>i.brand))];
-  const handlePay=()=>{setStage("processing");setTimeout(()=>setStage("done"),2500);};
+
+  const Field=({label,k,placeholder,half})=>(
+    <div style={{flex:half?"1 1 45%":"1 1 100%",marginBottom:10}}>
+      <div style={{fontSize:11,color:C.muted,fontFamily:FB,marginBottom:4}}>{label}</div>
+      <input value={buyer[k]} onChange={e=>setBuyer(b=>({...b,[k]:e.target.value}))} placeholder={placeholder} style={{width:"100%",padding:"10px 12px",borderRadius:10,border:`1px solid ${C.border}`,background:"white",fontSize:13,fontFamily:FB,color:C.dark,outline:"none"}}/>
+    </div>
+  );
+
+  const infoComplete=buyer.firstName&&buyer.lastName&&buyer.email&&buyer.phone&&buyer.address1&&buyer.city&&buyer.province&&buyer.postalCode;
+
+  const handlePlaceOrder=async()=>{
+    setStage("processing");
+    setError(null);
+    try{
+      const resp=await fetch("/api/checkout",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({items,buyer})
+      });
+      const data=await resp.json();
+      if(!resp.ok) throw new Error(data.error||"Checkout failed");
+      setOrders(data.orders||[]);
+      setStage("done");
+    }catch(err){
+      setError(err.message);
+      setStage("error");
+    }
+  };
+
   if(stage==="done") return(
-    <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",padding:32,textAlign:"center"}}>
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",padding:32,textAlign:"center",overflowY:"auto"}}>
       <div style={{fontSize:64,marginBottom:14}}>🎉</div>
-      <div style={{fontSize:24,fontWeight:800,color:C.dark,fontFamily:FD,marginBottom:8}}>Order Placed!</div>
-      <div style={{fontSize:13,color:C.muted,fontFamily:FB,lineHeight:1.8,marginBottom:20}}>Your {items.length} items have been ordered<br/>from {retailers.length} retailer{retailers.length>1?"s":""}.<br/>One payment. Multiple deliveries.</div>
+      <div style={{fontSize:24,fontWeight:800,color:C.dark,fontFamily:FD,marginBottom:8}}>Orders Placed!</div>
+      <div style={{fontSize:13,color:C.muted,fontFamily:FB,lineHeight:1.8,marginBottom:20}}>Your {items.length} items have been ordered<br/>from {retailers.length} retailer{retailers.length>1?"s":""}.<br/>Items ship directly to you.</div>
       <div style={{width:"100%",background:C.tag,borderRadius:16,padding:"14px 16px",marginBottom:18}}>
-        {retailers.map((r,i)=>(
-          <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:i<retailers.length-1?`1px solid ${C.border}`:"none"}}>
-            <span style={{fontSize:13,color:C.dark,fontFamily:FB}}>{r}</span>
-            <span style={{fontSize:12,color:"#2D6A4F",fontFamily:FB,fontWeight:600}}>✓ Confirmed</span>
+        {orders.map((o,i)=>(
+          <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:i<orders.length-1?`1px solid ${C.border}`:"none"}}>
+            <div>
+              <div style={{fontSize:12,color:C.dark,fontFamily:FB,fontWeight:600}}>{o.item}</div>
+              <div style={{fontSize:11,color:C.muted,fontFamily:FB}}>{o.brand}</div>
+            </div>
+            <span style={{fontSize:12,color:o.status==="created"?"#2D6A4F":"#CC3333",fontFamily:FB,fontWeight:600}}>
+              {o.status==="created"?"✓ Confirmed":"✗ Failed"}
+            </span>
           </div>
         ))}
       </div>
+      <div style={{fontSize:11,color:C.muted,fontFamily:FB,marginBottom:20}}>Confirmation sent to {buyer.email}</div>
       <button onClick={onDone} style={{width:"100%",padding:14,borderRadius:14,background:C.accent,color:"white",border:"none",fontWeight:800,fontSize:14,fontFamily:FB,cursor:"pointer"}}>Back to Feed</button>
     </div>
   );
+
+  if(stage==="error") return(
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",padding:32,textAlign:"center"}}>
+      <div style={{fontSize:56,marginBottom:16}}>⚠️</div>
+      <div style={{fontSize:20,fontWeight:800,color:C.dark,fontFamily:FD,marginBottom:8}}>Something went wrong</div>
+      <div style={{fontSize:13,color:C.muted,fontFamily:FB,marginBottom:20,lineHeight:1.6}}>{error}</div>
+      <button onClick={()=>setStage("review")} style={{width:"100%",padding:14,borderRadius:14,background:C.accent,color:"white",border:"none",fontWeight:800,fontSize:14,fontFamily:FB,cursor:"pointer",marginBottom:10}}>Try Again</button>
+      <button onClick={onDone} style={{width:"100%",padding:14,borderRadius:14,background:C.tag,color:C.dark,border:`1px solid ${C.border}`,fontWeight:700,fontSize:14,fontFamily:FB,cursor:"pointer"}}>Back to Feed</button>
+    </div>
+  );
+
   if(stage==="processing") return(
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",padding:32,textAlign:"center"}}>
       <div style={{fontSize:56,marginBottom:16}}>⚡</div>
-      <div style={{fontSize:21,fontWeight:800,color:C.dark,fontFamily:FD,marginBottom:8}}>Processing order...</div>
-      <div style={{fontSize:13,color:C.muted,fontFamily:FB,lineHeight:1.8}}>Placing orders across {retailers.length} retailer{retailers.length>1?"s":""} simultaneously.<br/>You only pay once.</div>
+      <div style={{fontSize:21,fontWeight:800,color:C.dark,fontFamily:FD,marginBottom:8}}>Placing your orders...</div>
+      <div style={{fontSize:13,color:C.muted,fontFamily:FB,lineHeight:1.8}}>Ordering from {retailers.length} retailer{retailers.length>1?"s":""} simultaneously.<br/>This takes a few seconds.</div>
       <div style={{marginTop:20,display:"flex",gap:6}}>
         {[0,1,2].map(i=><div key={i} style={{width:8,height:8,borderRadius:"50%",background:C.accent,animation:`bounce 0.8s ease-in-out ${i*0.2}s infinite alternate`}}/>)}
       </div>
     </div>
   );
+
+  if(stage==="info") return(
+    <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+      <div style={{padding:"16px 16px 0",flexShrink:0}}>
+        <div style={{fontSize:17,fontWeight:800,color:C.dark,fontFamily:FD,marginBottom:4}}>Shipping Info</div>
+        <div style={{fontSize:12,color:C.muted,fontFamily:FB,marginBottom:14}}>Where should we ship your order?</div>
+      </div>
+      <div style={{flex:1,overflowY:"auto",padding:"0 16px 140px"}}>
+        <div style={{display:"flex",flexWrap:"wrap",gap:"0 10px"}}>
+          <Field label="First name" k="firstName" placeholder="Jane" half/>
+          <Field label="Last name" k="lastName" placeholder="Doe" half/>
+          <Field label="Email" k="email" placeholder="jane@email.com"/>
+          <Field label="Phone" k="phone" placeholder="+1 212 555 0100"/>
+          <Field label="Address" k="address1" placeholder="123 Main St"/>
+          <Field label="Apt / Suite (optional)" k="address2" placeholder="Apt 4B"/>
+          <Field label="City" k="city" placeholder="New York" half/>
+          <Field label="State" k="province" placeholder="NY" half/>
+          <Field label="ZIP Code" k="postalCode" placeholder="10001" half/>
+          <Field label="Country" k="country" placeholder="US" half/>
+        </div>
+      </div>
+      <div style={{position:"absolute",bottom:0,left:0,right:0,background:"white",borderTop:`1px solid ${C.border}`,padding:"14px 16px 24px",boxShadow:"0 -8px 30px rgba(26,18,9,0.08)"}}>
+        <button onClick={()=>infoComplete&&setStage("review")} style={{width:"100%",padding:14,borderRadius:14,background:infoComplete?C.accent:C.border,color:"white",border:"none",fontWeight:800,fontSize:14,fontFamily:FB,cursor:infoComplete?"pointer":"not-allowed"}}>
+          Continue to Review →
+        </button>
+      </div>
+    </div>
+  );
+
+  // Review stage
   return(
     <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
       <div style={{padding:"16px 16px 0",flexShrink:0}}>
-        <div style={{fontSize:17,fontWeight:800,color:C.dark,fontFamily:FD,marginBottom:14}}>Checkout</div>
-        <div style={{background:C.accentLight,border:`1px solid ${C.accent}`,borderRadius:14,padding:"10px 14px",marginBottom:16,fontSize:12,color:C.accent,fontFamily:FB,fontWeight:600}}>⚡ 1 payment · {retailers.length} retailers · ordered simultaneously</div>
+        <div style={{fontSize:17,fontWeight:800,color:C.dark,fontFamily:FD,marginBottom:14}}>Review Order</div>
+        <div style={{background:C.accentLight,border:`1px solid ${C.accent}`,borderRadius:14,padding:"10px 14px",marginBottom:16,fontSize:12,color:C.accent,fontFamily:FB,fontWeight:600}}>⚡ {retailers.length} retailer{retailers.length>1?"s":""} · ships to {buyer.city}, {buyer.province}</div>
       </div>
       <div style={{flex:1,overflowY:"auto",padding:"0 16px 150px"}}>
-        <div style={{fontSize:11,fontWeight:700,color:C.dark,fontFamily:FB,textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Order Summary</div>
+        <div style={{fontSize:11,fontWeight:700,color:C.dark,fontFamily:FB,textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Items</div>
         {items.map(item=>(
           <div key={item.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
             <div style={{display:"flex",gap:10,alignItems:"center"}}>
@@ -361,31 +439,26 @@ function CheckoutScreen({items,total,onDone}){
               <div>
                 <div style={{fontSize:13,fontWeight:600,color:C.dark,fontFamily:FB}}>{item.name}</div>
                 <div style={{fontSize:11,color:C.muted,fontFamily:FB}}>{item.brand}</div>
-                {item.link&&<div style={{fontSize:10,color:C.accent,fontFamily:FB}}>🛍 Ships from retailer</div>}
               </div>
             </div>
             <div style={{fontWeight:700,fontSize:13,color:C.dark,fontFamily:FB}}>${typeof item.price==="number"?item.price.toFixed(2):item.price}</div>
           </div>
         ))}
-        <div style={{marginTop:16,background:C.tag,borderRadius:14,padding:14}}>
-          <div style={{fontSize:11,fontWeight:700,color:C.dark,fontFamily:FB,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Payment</div>
-          <div style={{background:"white",borderRadius:10,padding:"10px 12px",border:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <span style={{fontSize:13,color:C.dark,fontFamily:FB}}>•••• •••• •••• 4242</span>
-            <span style={{fontSize:18}}>💳</span>
-          </div>
-        </div>
-        <div style={{marginTop:12,background:C.tag,borderRadius:14,padding:14}}>
-          <div style={{fontSize:11,fontWeight:700,color:C.dark,fontFamily:FB,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Shipping</div>
-          <div style={{fontSize:13,color:C.dark,fontFamily:FB}}>123 Main St, Apt 4B</div>
-          <div style={{fontSize:11,color:C.muted,fontFamily:FB}}>New York, NY 10001</div>
+        <div style={{marginTop:14,background:C.tag,borderRadius:14,padding:14}}>
+          <div style={{fontSize:11,fontWeight:700,color:C.dark,fontFamily:FB,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Shipping to</div>
+          <div style={{fontSize:13,color:C.dark,fontFamily:FB}}>{buyer.firstName} {buyer.lastName}</div>
+          <div style={{fontSize:12,color:C.muted,fontFamily:FB}}>{buyer.address1}{buyer.address2?`, ${buyer.address2}`:""}</div>
+          <div style={{fontSize:12,color:C.muted,fontFamily:FB}}>{buyer.city}, {buyer.province} {buyer.postalCode}</div>
+          <button onClick={()=>setStage("info")} style={{marginTop:8,fontSize:11,color:C.accent,background:"none",border:"none",cursor:"pointer",fontFamily:FB,fontWeight:700,padding:0}}>Edit →</button>
         </div>
       </div>
       <div style={{position:"absolute",bottom:0,left:0,right:0,background:"white",borderTop:`1px solid ${C.border}`,padding:"14px 16px 24px",boxShadow:"0 -8px 30px rgba(26,18,9,0.08)"}}>
         <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
-          <div style={{fontSize:12,color:C.muted,fontFamily:FB}}>Total · {items.length} items</div>
+          <div style={{fontSize:12,color:C.muted,fontFamily:FB}}>{items.length} item{items.length!==1?"s":""} · {retailers.length} retailer{retailers.length>1?"s":""}</div>
           <div style={{fontSize:20,fontWeight:800,color:C.dark,fontFamily:FD}}>${total.toFixed(2)}</div>
         </div>
-        <button onClick={handlePay} style={{width:"100%",padding:14,borderRadius:14,background:C.accent,color:"white",border:"none",fontWeight:800,fontSize:14,fontFamily:FB,cursor:"pointer",boxShadow:`0 6px 20px ${C.accent}44`}}>Place Order Now →</button>
+        <button onClick={handlePlaceOrder} style={{width:"100%",padding:14,borderRadius:14,background:C.accent,color:"white",border:"none",fontWeight:800,fontSize:14,fontFamily:FB,cursor:"pointer",boxShadow:`0 6px 20px ${C.accent}44`}}>Place Order Now →</button>
+        <div style={{fontSize:10,color:C.muted,fontFamily:FB,textAlign:"center",marginTop:8}}>Powered by Rye · Orders placed directly at each retailer</div>
       </div>
     </div>
   );
