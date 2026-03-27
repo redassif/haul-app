@@ -10,12 +10,11 @@ export default async function handler(req, res) {
     if (!urls || !urls.length) return res.status(400).json({ error: "No URLs provided" });
     if (!process.env.RYE_API_KEY) return res.status(500).json({ error: "RYE_API_KEY not set" });
 
-    // Fetch product data for all URLs in parallel
     const results = await Promise.all(
       urls.map(async ({ id, url }) => {
         try {
           const resp = await fetch(
-            `https://staging.api.rye.com/api/v1/products?url=${encodeURIComponent(url)}`,
+            `https://staging.api.rye.com/api/v1/products/lookup?url=${encodeURIComponent(url)}`,
             {
               method: "GET",
               headers: {
@@ -25,17 +24,23 @@ export default async function handler(req, res) {
             }
           );
 
-          const data = await resp.json();
+          const text = await resp.text();
+          console.log(`Rye response for ${url}:`, resp.status, text.slice(0, 300));
 
-          if (!resp.ok || data.error) {
-            return { id, success: false, error: data.error || "Failed to fetch" };
+          if (!resp.ok) {
+            return { id, success: false, error: `HTTP ${resp.status}: ${text.slice(0, 100)}` };
           }
 
-          // Normalize the response
-          const price = data.price?.amountSubunits
+          const data = JSON.parse(text);
+
+          // Normalize price — Rye returns amountSubunits (cents)
+          const price = data.price?.amountSubunits != null
             ? data.price.amountSubunits / 100
             : data.price?.value || null;
 
+          const priceDisplay = data.price?.displayValue || (price ? `$${price.toFixed(2)}` : null);
+
+          // Get featured image or first image
           const image = data.images?.find(i => i.isFeatured)?.url
             || data.images?.[0]?.url
             || null;
@@ -46,10 +51,9 @@ export default async function handler(req, res) {
             name: data.name || data.title,
             brand: data.brand || data.vendor,
             price,
-            priceDisplay: data.price?.displayValue || (price ? `$${price.toFixed(2)}` : null),
+            priceDisplay,
             image,
             isAvailable: data.isPurchasable !== false,
-            url,
           };
         } catch (err) {
           return { id, success: false, error: err.message };
