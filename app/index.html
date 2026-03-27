@@ -26,8 +26,7 @@ const FD="'Playfair Display',serif", FB="'DM Sans',sans-serif";
 const HAULS=[
   {id:4,creator:"Reda A.",handle:"@redassif",av:"R",avc:"#E8442C",title:"Accessories Haul 💛",views:"1",likes:"1",thumb:"💛",bg:"linear-gradient(135deg,#FFF4D4,#FFE8A0)",items:[
     {id:101,name:"A Little High Maintenance Anklet",brand:"Fashion Nova",price:10.99,color:"#C9A84C",checked:true,link:"https://www.fashionnova.com/products/a-little-high-maintenance-anklet-gold"},
-    {id:102,name:"7pcs Nail Care Tool Kit",brand:"Shein",price:4.99,color:"#F5F5F5",checked:true,link:"https://us.shein.com/NailShine7pcsNailCareToolKit-ManicureSet:NailFile,Buffer,Polisher,CuticlePusher,NailSupplies,NailTools,NailArtTools,BackToSchool,Nails,NailToolsForPressOnNails-p-95043189-cat-3679.html?share_from=null&url_from=GM74120242038&cdn_rsite=cf&ref=www&rep=dir&ret=us"},
-    {id:103,name:"18K Gold Plated Arabic Script Bracelet",brand:"Shein",price:6.99,color:"#C9A84C",checked:true,link:"https://us.shein.com/LIEBEIRIS1pc18KGoldPlatedMinimalistArabicScriptStainlessSteelBracelet,SuitableForWomenAsDailyAccessoryAndGift-p-50916438-cat-1758.html?share_from=null&url_from=GM74120242038&cdn_rsite=cf&ref=www&rep=dir&ret=us"},
+    {id:102,name:"Women's Invisible Socks 6 Pairs",brand:"Nroktia",price:12.99,color:"#F5F5F5",checked:true,link:"https://www.amazon.com/Nroktia-Pairs-Socks-Women-Invisible/dp/B0CSBSSRBK"},
   ]},
   {id:1,creator:"Zara M.",handle:"@zarastyles",av:"Z",avc:"#E8442C",title:"Spring Minimalist Haul ✨",views:"128K",likes:"14.2K",thumb:"🌸",bg:"linear-gradient(135deg,#F9E4D4,#F0D5C8)",items:[
     {id:1,name:"Linen Oversized Blazer",brand:"Zara",price:89.99,color:"#8B7355",checked:true},
@@ -134,14 +133,14 @@ function DetailScreen({haul,onBack,onCheckout}){
       if(data.products){
         setItems(prev=>prev.map(item=>{
           const real=data.products.find(p=>p.id===item.id);
-          if(real&&real.success&&real.price){
+          if(real&&real.success){
             return{
               ...item,
               name: real.name||item.name,
               price: real.price||item.price,
               image: real.image||item.image,
               brand: real.brand||item.brand,
-              realPrice: real.priceDisplay,
+              realPrice: real.priceDisplay||null,
             };
           }
           return item;
