@@ -8,57 +8,46 @@ export default async function handler(req, res) {
   try {
     const { urls } = req.body;
     if (!urls || !urls.length) return res.status(400).json({ error: "No URLs provided" });
-
-    const RYE_KEY = process.env.RYE_API_KEY || "RYE/staging-adcde2a158554b26b349";
+    if (!process.env.RYE_API_KEY) return res.status(500).json({ error: "RYE_API_KEY not set" });
 
     const results = await Promise.all(
       urls.map(async ({ id, url }) => {
         try {
           const resp = await fetch(
-            `https://staging.api.rye.com/api/v1/products/lookup?url=${encodeURIComponent(url)}`,
+            `https://api.rye.com/api/v1/products/lookup?url=${encodeURIComponent(url)}`,
             {
               method: "GET",
               headers: {
-                "Authorization": `Bearer ${RYE_KEY}`,
+                "Authorization": `Bearer ${process.env.RYE_API_KEY}`,
               },
             }
           );
 
           const text = await resp.text();
-          console.log(`Rye ${resp.status} for ${url.slice(0,50)}:`, text.slice(0, 300));
-
           if (!resp.ok) {
-            return { id, success: false, error: `HTTP ${resp.status}: ${text.slice(0,100)}` };
+            return { id, success: false, error: `HTTP ${resp.status}` };
           }
 
           const data = JSON.parse(text);
 
-          // Rye can return price in multiple formats — try all of them
+          // Parse price from various possible formats
           let price = null;
           let priceDisplay = null;
 
           if (data.price != null) {
             if (typeof data.price === "number") {
               price = data.price;
-            } else if (data.price.amountSubunits != null && data.price.amountSubunits > 0) {
+            } else if (data.price.amountSubunits > 0) {
               price = data.price.amountSubunits / 100;
-            } else if (data.price.value != null && data.price.value > 0) {
+            } else if (data.price.value > 0) {
               price = data.price.value;
-            } else if (data.price.amount != null && data.price.amount > 0) {
+            } else if (data.price.amount > 0) {
               price = data.price.amount;
             }
             priceDisplay = data.price.displayValue || data.price.formatted || null;
           }
 
-          // Also check top-level price fields
-          if (!price && data.priceRange?.minVariantPrice?.amount) {
-            price = parseFloat(data.priceRange.minVariantPrice.amount);
-          }
-          if (!priceDisplay && price) {
-            priceDisplay = `$${price.toFixed(2)}`;
-          }
-
-          console.log("Price data:", JSON.stringify(data.price), "parsed:", price);
+          if (!priceDisplay && price) priceDisplay = `$${price.toFixed(2)}`;
 
           const image = data.images?.find(i => i.isFeatured)?.url
             || data.images?.[0]?.url

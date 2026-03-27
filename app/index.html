@@ -116,12 +116,11 @@ function DetailScreen({haul,onBack,onCheckout}){
   const total=selected.reduce((s,i)=>s+i.price,0);
   const toggle=id=>setItems(items.map(i=>i.id===id?{...i,checked:!i.checked}:i));
 
-  // Fetch real prices from Rye if items have links
   React.useEffect(()=>{
     const itemsWithLinks=haul.items.filter(i=>i.link);
     if(itemsWithLinks.length===0) return;
     setLoadingPrices(true);
-    setDebugMsg("Calling /api/product...");
+    setDebugMsg("Fetching live prices...");
     fetch("/api/product",{
       method:"POST",
       headers:{"Content-Type":"application/json"},
@@ -176,7 +175,7 @@ function DetailScreen({haul,onBack,onCheckout}){
         {loadingPrices&&(
           <div style={{background:C.accentLight,border:`1px solid ${C.accent}`,borderRadius:12,padding:"10px 14px",marginBottom:12,display:"flex",gap:8,alignItems:"center"}}>
             <div style={{width:8,height:8,borderRadius:"50%",background:C.accent,animation:"bounce 0.8s ease-in-out infinite alternate"}}/>
-            <div style={{fontSize:12,color:C.accent,fontFamily:FB,fontWeight:600}}>Fetching real prices from retailers...</div>
+            <div style={{fontSize:12,color:C.accent,fontFamily:FB,fontWeight:600}}>Fetching live prices...</div>
           </div>
         )}
         {!loadingPrices&&debugMsg&&(
