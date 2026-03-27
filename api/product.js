@@ -10,6 +10,9 @@ export default async function handler(req, res) {
     if (!urls || !urls.length) return res.status(400).json({ error: "No URLs provided" });
     if (!process.env.RYE_API_KEY) return res.status(500).json({ error: "RYE_API_KEY not set" });
 
+    // Rye requires the API key to be Base64 encoded
+    const encoded = Buffer.from(process.env.RYE_API_KEY).toString("base64");
+
     const results = await Promise.all(
       urls.map(async ({ id, url }) => {
         try {
@@ -18,7 +21,7 @@ export default async function handler(req, res) {
             {
               method: "GET",
               headers: {
-                "Authorization": `Basic ${process.env.RYE_API_KEY}`,
+                "Authorization": `Basic ${encoded}`,
                 "Content-Type": "application/json",
               },
             }
@@ -33,14 +36,12 @@ export default async function handler(req, res) {
 
           const data = JSON.parse(text);
 
-          // Normalize price — Rye returns amountSubunits (cents)
           const price = data.price?.amountSubunits != null
             ? data.price.amountSubunits / 100
             : data.price?.value || null;
 
           const priceDisplay = data.price?.displayValue || (price ? `$${price.toFixed(2)}` : null);
 
-          // Get featured image or first image
           const image = data.images?.find(i => i.isFeatured)?.url
             || data.images?.[0]?.url
             || null;

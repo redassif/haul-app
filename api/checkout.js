@@ -11,6 +11,7 @@ export default async function handler(req, res) {
     if (!process.env.RYE_API_KEY) return res.status(500).json({ error: "RYE_API_KEY not set" });
 
     const RYE_ENDPOINT = "https://staging.api.rye.com/api/v1/checkout-intents";
+    const encoded = Buffer.from(process.env.RYE_API_KEY).toString("base64");
 
     // Create a checkout intent for each item in parallel
     const results = await Promise.all(
@@ -19,7 +20,7 @@ export default async function handler(req, res) {
           const resp = await fetch(RYE_ENDPOINT, {
             method: "POST",
             headers: {
-              "Authorization": `Basic ${process.env.RYE_API_KEY}`,
+              "Authorization": `Basic ${encoded}`,
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
