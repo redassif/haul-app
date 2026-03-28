@@ -129,7 +129,7 @@ function DetailScreen({haul,onBack,onCheckout}){
     })
     .then(r=>r.json())
     .then(data=>{
-      setDebugMsg("Rye: "+JSON.stringify(data).slice(0,200));
+      setDebugMsg(JSON.stringify(data.products?.map(p=>({id:p.id,ok:p.success,name:p.name?.slice(0,20),price:p.price,priceDisplay:p.priceDisplay,img:p.image?.slice(0,30),err:p.error?.slice(0,50)})),null,0));
       if(data.products){
         setItems(prev=>prev.map(item=>{
           const real=data.products.find(p=>p.id===item.id);
