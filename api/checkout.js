@@ -10,7 +10,10 @@ export default async function handler(req, res) {
     if (!items || !buyer) return res.status(400).json({ error: "Missing items or buyer info" });
     if (!process.env.RYE_API_KEY) return res.status(500).json({ error: "RYE_API_KEY not set" });
 
-    const RYE_ENDPOINT = "https://api.rye.com/api/v1/checkout-intents";
+    const RYE_BASE = process.env.RYE_ENV === "staging"
+      ? "https://staging.api.rye.com"
+      : "https://api.rye.com";
+    const RYE_ENDPOINT = `${RYE_BASE}/api/v1/checkout-intents`;
 
     const results = await Promise.all(
       items.map(async (item) => {
@@ -18,7 +21,7 @@ export default async function handler(req, res) {
           const resp = await fetch(RYE_ENDPOINT, {
             method: "POST",
             headers: {
-              "Authorization": `Bearer ${process.env.RYE_API_KEY}`,
+              "Authorization": `Basic ${process.env.RYE_API_KEY}`,
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
