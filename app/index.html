@@ -36,9 +36,9 @@ const HAULS=[
     {id:4,name:"Mini Shoulder Bag",brand:"Mango",price:59.99,color:"#1A1A1A",checked:true,link:"https://shop.mango.com/us/en/p/women/bags/crossbody/mini-shopper-style-shoulder-bag_87007174"}
   ]},
   {id:2,creator:"Mia Chen",handle:"@miafashion",av:"M",avc:"#2D6A4F",title:"Y2K Comeback Pieces 🌀",views:"89K",likes:"9.8K",thumb:"⭐",bg:"linear-gradient(135deg,#D4E8F9,#C8D5F0)",items:[
-    {id:5,name:"Low Rise Cargo Pants",brand:"Urban Outfitters",price:79.99,color:"#556B2F",checked:true},
-    {id:6,name:"Butterfly Crop Top",brand:"Shein",price:19.99,color:"#FF69B4",checked:true},
-    {id:7,name:"Platform Sneakers",brand:"Nike",price:120.00,color:"#E0E0E0",checked:true},
+    {id:5,name:"Low Rise Cargo Pants",brand:"Urban Outfitters",price:79.99,color:"#556B2F",checked:true,link:"https://www.urbanoutfitters.com/shop/hybrid/bdg-360-utility-low-rise-straight-leg-pant"},
+    {id:6,name:"Butterfly Crop Top",brand:"Shein",price:19.99,color:"#FF69B4",checked:true,link:"https://www.prettylittlething.us/product/petite-slogan-diamante-graphic-fitted-t-shirt_plt21653?colour=white"},
+    {id:7,name:"Platform Sneakers",brand:"Nike",price:120.00,color:"#E0E0E0",checked:true,link:"https://www.amazon.com/Womens-Sneaker-White-Black-Orange/dp/B0B6FRWL4G?th=1&psc=1"},
     {id:8,name:"Tinted Sunglasses",brand:"ASOS",price:24.99,color:"#2C2C2C",checked:false}
   ]},
   {id:3,creator:"Leila K.",handle:"@leilaootd",av:"L",avc:"#7B2D8B",title:"Office to Out — Work Fits 💼",views:"204K",likes:"22.1K",thumb:"💼",bg:"linear-gradient(135deg,#E8D4F9,#D8C8F0)",items:[
@@ -158,12 +158,12 @@ function DetailScreen({haul,onBack,onCheckout}){
     <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
       <div style={{height:220,background:haul.bg,position:"relative",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,overflow:"hidden"}}>
         {haul.id===1
-          ? <><video src="haul.mp4" style={{width:"100%",height:"100%",objectFit:"cover",position:"absolute",inset:0}} autoPlay muted loop playsInline/>
+          ? <><video src="/haul.mp4" style={{width:"100%",height:"100%",objectFit:"cover",position:"absolute",inset:0}} autoPlay muted loop playsInline/>
           <div style={{position:"absolute",bottom:8,right:8,width:44,height:20,borderRadius:4,background:"rgba(0,0,0,0.55)"}}/></>
           : haul.id===2
-          ? <video src="y2k.mp4" style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"center top",position:"absolute",inset:0}} autoPlay muted loop playsInline/>
+          ? <video src="/y2k.mp4" style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"center top",position:"absolute",inset:0}} autoPlay muted loop playsInline/>
           : haul.id===3
-          ? <video src="office.mp4" style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"center top",position:"absolute",inset:0}} autoPlay muted loop playsInline/>
+          ? <video src="/office.mp4" style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"center top",position:"absolute",inset:0}} autoPlay muted loop playsInline/>
           : <div style={{fontSize:64,opacity:0.4}}>{haul.thumb}</div>
         }
         <button onClick={onBack} style={{position:"absolute",top:16,left:16,width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,0.9)",border:"none",fontSize:16,cursor:"pointer"}}>←</button>
