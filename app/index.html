@@ -75,7 +75,7 @@ function FeedScreen({onOpen,onSnap,onProfile}){
                   ? <><video src="haul.mp4" style={{width:"100%",height:"100%",objectFit:"cover",position:"absolute",inset:0}} autoPlay muted loop playsInline/>
                   <div style={{position:"absolute",bottom:8,right:8,width:44,height:20,borderRadius:4,background:"rgba(0,0,0,0.55)"}}/></>
                   : h.id===2
-                  ? <video src="y2k.mp4" style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"center top",position:"absolute",inset:0}} autoPlay muted loop playsInline/>
+                  ? <video src="y2k.mp4" style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"center top",position:"absolute",inset:0}} autoPlay muted loop playsInline onError={e=>console.log('video error',e)}/>
                   : <div style={{fontSize:60,opacity:0.5}}>{h.thumb}</div>
                 }
                 <div style={{position:"absolute",bottom:10,left:10,right:10,display:"flex",justifyContent:"space-between"}}>
