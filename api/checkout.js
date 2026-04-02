@@ -21,7 +21,7 @@ export default async function handler(req, res) {
           const resp = await fetch(RYE_ENDPOINT, {
             method: "POST",
             headers: {
-              "Authorization": `Basic ${Buffer.from(process.env.RYE_API_KEY).toString("base64")}`,
+              "Authorization": `Basic ${process.env.RYE_API_KEY}`,
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
