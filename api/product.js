@@ -10,6 +10,9 @@ export default async function handler(req, res) {
     if (!urls || !urls.length) return res.status(400).json({ error: "No URLs provided" });
     if (!process.env.RYE_API_KEY) return res.status(500).json({ error: "RYE_API_KEY not set" });
 
+    // DEBUG
+    console.log("RYE_ENV:", process.env.RYE_ENV);
+    console.log("KEY_PREFIX:", process.env.RYE_API_KEY?.slice(0, 20));
     const RYE_BASE = process.env.RYE_ENV === "staging"
       ? "https://staging.api.rye.com"
       : "https://api.rye.com";
