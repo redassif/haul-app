@@ -22,7 +22,7 @@ export default async function handler(req, res) {
             {
               method: "GET",
               headers: {
-                "Authorization": `Basic ${process.env.RYE_API_KEY}`,
+                "Authorization": `Basic ${Buffer.from(process.env.RYE_API_KEY).toString("base64")}`,
               },
             }
           );
