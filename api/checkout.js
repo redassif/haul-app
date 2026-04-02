@@ -39,10 +39,14 @@ export default async function handler(req, res) {
             }),
           });
 
-          const data = await resp.json();
+          let data = {};
+          try {
+            const ct = resp.headers.get("content-type") || "";
+            if (ct.includes("application/json")) data = await resp.json();
+          } catch { }
 
           if (!resp.ok) {
-            return { item: item.name, status: "failed", error: data.message || "Failed" };
+            return { item: item.name, status: "failed", error: data.message || `HTTP ${resp.status}` };
           }
 
           return {

@@ -24,7 +24,14 @@ export default async function handler(req, res) {
       }),
     });
 
-    const ximilarData = await ximilarResp.json();
+    let ximilarData;
+    try {
+      const ct = ximilarResp.headers.get("content-type") || "";
+      if (!ct.includes("application/json")) throw new Error("Non-JSON from Ximilar");
+      ximilarData = await ximilarResp.json();
+    } catch (e) {
+      return res.status(500).json({ error: "Ximilar parse error: " + e.message });
+    }
     if (!ximilarResp.ok) return res.status(500).json({ error: "Ximilar error: " + JSON.stringify(ximilarData) });
 
     const record = ximilarData.records?.[0];
@@ -111,7 +118,11 @@ export default async function handler(req, res) {
           });
 
           const searchResp = await fetch(`https://serpapi.com/search?${params}`);
-          const searchData = await searchResp.json();
+          let searchData = { shopping_results: [] };
+          try {
+            const ct = searchResp.headers.get("content-type") || "";
+            if (ct.includes("application/json")) searchData = await searchResp.json();
+          } catch { }
           const results = searchData.shopping_results || [];
           const top = results[0];
 

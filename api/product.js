@@ -28,7 +28,17 @@ export default async function handler(req, res) {
             return { id, success: false, error: `HTTP ${resp.status}` };
           }
 
-          const data = JSON.parse(text);
+          const contentType = resp.headers.get("content-type") || "";
+          if (!contentType.includes("application/json")) {
+            return { id, success: false, error: "Non-JSON response from Rye" };
+          }
+
+          let data;
+          try {
+            data = JSON.parse(text);
+          } catch {
+            return { id, success: false, error: "Invalid JSON from Rye" };
+          }
 
           // Parse price from various possible formats
           let price = null;

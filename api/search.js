@@ -20,7 +20,14 @@ export default async function handler(req, res) {
     });
 
     const response = await fetch(`https://serpapi.com/search?${params}`);
-    const data = await response.json();
+    let data = {};
+    try {
+      const ct = response.headers.get("content-type") || "";
+      if (ct.includes("application/json")) data = await response.json();
+      else return res.status(500).json({ error: "Non-JSON from SerpAPI" });
+    } catch {
+      return res.status(500).json({ error: "Search parse error" });
+    }
 
     if (!response.ok) return res.status(500).json({ error: "Search failed" });
 

@@ -47,7 +47,14 @@ ITEMS: [{"id": 1, "name": "...", "brand": "...", "price": 89.99, "color": "#8B73
       }),
     });
 
-    const data = await resp.json();
+    let data;
+    try {
+      const ct = resp.headers.get("content-type") || "";
+      if (!ct.includes("application/json")) throw new Error("Non-JSON from Anthropic");
+      data = await resp.json();
+    } catch (e) {
+      return res.status(500).json({ error: "AI parse error: " + e.message });
+    }
     if (!resp.ok) return res.status(500).json({ error: data.error?.message || "AI error" });
 
     const fullText = data.content[0].text;
