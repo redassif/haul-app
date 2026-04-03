@@ -12,10 +12,13 @@ export default async function handler(req, res) {
     if (!items || !buyer) return res.status(400).json({ error: "Missing items or buyer info" });
     if (!process.env.RYE_API_KEY) return res.status(500).json({ error: "RYE_API_KEY not set" });
 
-    // SDK auto-routes to staging or prod based on key prefix (RYE/staging- vs RYE/production-)
+    const isStaging = process.env.RYE_API_KEY?.startsWith("RYE/staging");
+    // SDK auto-routes to staging or prod based on key prefix
     const client = new CheckoutIntents({
       apiKey: process.env.RYE_API_KEY,
     });
+    // Use test token for staging, real token for prod
+    const paymentToken = stripeToken || (isStaging ? "tok_visa" : null);
 
     const results = await Promise.all(
       items.map(async (item) => {
@@ -47,7 +50,7 @@ export default async function handler(req, res) {
           }
 
           // If no stripe token provided, return the offer for review
-          if (!stripeToken) {
+          if (!paymentToken) {
             return {
               item: item.name,
               status: "awaiting_payment",
@@ -60,7 +63,7 @@ export default async function handler(req, res) {
           const completed = await client.checkoutIntents.confirmAndPoll(intent.id, {
             paymentMethod: {
               type: "stripe_token",
-              stripeToken,
+              stripeToken: paymentToken,
             },
           });
 
