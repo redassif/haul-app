@@ -425,8 +425,8 @@ function CheckoutScreen({items,total,onDone}){
               <div style={{fontSize:12,color:C.dark,fontFamily:FB,fontWeight:600}}>{o.item}</div>
               <div style={{fontSize:11,color:C.muted,fontFamily:FB}}>{o.brand}</div>
             </div>
-            <span style={{fontSize:12,color:(o.status==="completed"||o.status==="created")?"#2D6A4F":"#CC3333",fontFamily:FB,fontWeight:600}}>
-              {(o.status==="completed"||o.status==="created")?"✓ Confirmed":"✗ Failed"}
+            <span style={{fontSize:12,color:o.status==="created"?"#2D6A4F":"#CC3333",fontFamily:FB,fontWeight:600}}>
+              {o.status==="created"?"✓ Confirmed":"✗ Failed"}
             </span>
           </div>
         ))}
