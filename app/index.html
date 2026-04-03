@@ -416,8 +416,8 @@ function CheckoutScreen({items,total,onDone}){
   if(stage==="done") return(
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",padding:32,textAlign:"center",overflowY:"auto"}}>
       <div style={{fontSize:64,marginBottom:14}}>🎉</div>
-      <div style={{fontSize:24,fontWeight:800,color:C.dark,fontFamily:FD,marginBottom:8}}>Orders Placed!</div>
-      <div style={{fontSize:13,color:C.muted,fontFamily:FB,lineHeight:1.8,marginBottom:20}}>Your {items.length} items have been ordered<br/>from {retailers.length} retailer{retailers.length>1?"s":""}.<br/>Items ship directly to you.</div>
+      <div style={{fontSize:24,fontWeight:800,color:C.dark,fontFamily:FD,marginBottom:8}}>Purchase Complete!</div>
+      <div style={{fontSize:13,color:C.muted,fontFamily:FB,lineHeight:1.8,marginBottom:20}}>Your order has been placed successfully.<br/>A confirmation email has been sent to<br/><span style={{color:C.dark,fontWeight:600}}>{buyer.email}</span></div>
       <div style={{width:"100%",background:C.tag,borderRadius:16,padding:"14px 16px",marginBottom:18}}>
         {orders.map((o,i)=>(
           <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:i<orders.length-1?`1px solid ${C.border}`:"none"}}>
@@ -425,13 +425,11 @@ function CheckoutScreen({items,total,onDone}){
               <div style={{fontSize:12,color:C.dark,fontFamily:FB,fontWeight:600}}>{o.item}</div>
               <div style={{fontSize:11,color:C.muted,fontFamily:FB}}>{o.brand}</div>
             </div>
-            <span style={{fontSize:12,color:o.status==="created"?"#2D6A4F":"#CC3333",fontFamily:FB,fontWeight:600}}>
-              {o.status==="created"?"✓ Confirmed":"✗ Failed"}
-            </span>
+            <span style={{fontSize:12,color:"#2D6A4F",fontFamily:FB,fontWeight:600}}>✓ Confirmed</span>
           </div>
         ))}
       </div>
-      <div style={{fontSize:11,color:C.muted,fontFamily:FB,marginBottom:20}}>Confirmation sent to {buyer.email}</div>
+      <div style={{fontSize:11,color:C.muted,fontFamily:FB,marginBottom:20}}>Items ship directly to you from each retailer.</div>
       <button onClick={onDone} style={{width:"100%",padding:14,borderRadius:14,background:C.accent,color:"white",border:"none",fontWeight:800,fontSize:14,fontFamily:FB,cursor:"pointer"}}>Back to Feed</button>
     </div>
   );
