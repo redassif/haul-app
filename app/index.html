@@ -618,10 +618,46 @@ function CheckoutScreen({items,total,onDone}){
   );
 }
 
-function ProfileScreen({user, onSignOut}){
+function ProfileScreen({user, onSignOut, onUserUpdate}){
+  const [editing,setEditing]=useState(false);
+  const [name,setName]=useState(user?.user_metadata?.full_name||"");
+  const [email,setEmail]=useState(user?.email||"");
+  const [newPassword,setNewPassword]=useState("");
+  const [confirmPassword,setConfirmPassword]=useState("");
+  const [loading,setLoading]=useState(false);
+  const [success,setSuccess]=useState(null);
+  const [error,setError]=useState(null);
+
   const initials = user?.user_metadata?.full_name
     ? user.user_metadata.full_name.split(" ").map(n=>n[0]).join("").toUpperCase().slice(0,2)
     : user?.email?.[0]?.toUpperCase()||"?";
+
+  const handleSave=async()=>{
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
+    try{
+      const updates={};
+      if(name!==user.user_metadata?.full_name) updates.data={full_name:name};
+      if(email!==user.email) updates.email=email;
+      if(newPassword){
+        if(newPassword!==confirmPassword) throw new Error("Passwords don't match");
+        if(newPassword.length<6) throw new Error("Password must be at least 6 characters");
+        updates.password=newPassword;
+      }
+      if(Object.keys(updates).length===0){ setEditing(false); setLoading(false); return; }
+      const{data,error}=await supabase.auth.updateUser(updates);
+      if(error) throw error;
+      onUserUpdate(data.user);
+      setSuccess(email!==user.email?"Check your new email for a confirmation link.":"Profile updated successfully.");
+      setNewPassword("");
+      setConfirmPassword("");
+      setEditing(false);
+    }catch(err){
+      setError(err.message);
+    }
+    setLoading(false);
+  };
 
   if(!user) return(
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",padding:32,textAlign:"center"}}>
@@ -633,21 +669,73 @@ function ProfileScreen({user, onSignOut}){
 
   return(
     <div style={{padding:"16px 16px 100px",overflowY:"auto",height:"100%"}}>
-      <div style={{fontSize:17,fontWeight:700,fontStyle:"italic",color:C.dark,fontFamily:FD,marginBottom:18}}>Profile</div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
+        <div style={{fontSize:17,fontWeight:700,fontStyle:"italic",color:C.dark,fontFamily:FD}}>Profile</div>
+        <button onClick={()=>{setEditing(!editing);setError(null);setSuccess(null);}} style={{fontSize:12,color:C.accent,fontFamily:FB,fontWeight:700,background:"none",border:"none",cursor:"pointer",padding:0}}>
+          {editing?"Cancel":"Edit"}
+        </button>
+      </div>
+
       <div style={{textAlign:"center",marginBottom:20}}>
         <div style={{width:68,height:68,borderRadius:"50%",background:C.accent,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,fontWeight:800,color:"white",fontFamily:FB,margin:"0 auto 10px"}}>{initials}</div>
         <div style={{fontSize:17,fontWeight:700,fontStyle:"italic",color:C.dark,fontFamily:FD}}>{user.user_metadata?.full_name||"Creator"}</div>
         <div style={{fontSize:12,color:C.muted,fontFamily:FB,marginBottom:6}}>{user.email}</div>
         {user.user_metadata?.is_creator&&<div style={{display:"inline-block",padding:"4px 12px",background:C.accentLight,borderRadius:20,fontSize:11,color:C.accent,fontWeight:700,fontFamily:FB}}>✓ Verified Creator</div>}
       </div>
-      <div style={{display:"flex",gap:10,marginBottom:24}}>
-        {[{l:"Hauls",v:"0"},{l:"Purchased",v:"$0"},{l:"Followers",v:"0"}].map(s=>(
-          <div key={s.l} style={{flex:1,background:C.tag,borderRadius:14,padding:"12px 6px",textAlign:"center"}}>
-            <div style={{fontSize:18,fontWeight:800,color:C.accent,fontFamily:FD}}>{s.v}</div>
-            <div style={{fontSize:10,color:C.muted,fontFamily:FB}}>{s.l}</div>
+
+      {!editing&&(
+        <div style={{display:"flex",gap:10,marginBottom:24}}>
+          {[{l:"Hauls",v:"0"},{l:"Purchased",v:"$0"},{l:"Followers",v:"0"}].map(s=>(
+            <div key={s.l} style={{flex:1,background:C.tag,borderRadius:14,padding:"12px 6px",textAlign:"center"}}>
+              <div style={{fontSize:18,fontWeight:800,color:C.accent,fontFamily:FD}}>{s.v}</div>
+              <div style={{fontSize:10,color:C.muted,fontFamily:FB}}>{s.l}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {editing&&(
+        <div style={{marginBottom:16}}>
+          <div style={{fontSize:11,fontWeight:700,color:C.dark,fontFamily:FB,textTransform:"uppercase",letterSpacing:1,marginBottom:12}}>Edit Profile</div>
+
+          <div style={{marginBottom:10}}>
+            <div style={{fontSize:11,color:C.muted,fontFamily:FB,marginBottom:4}}>Full name</div>
+            <input value={name} onChange={e=>setName(e.target.value)}
+              style={{width:"100%",padding:"11px 14px",borderRadius:10,border:`1px solid ${C.border}`,background:C.card,fontSize:13,fontFamily:FB,color:C.dark,outline:"none"}}/>
           </div>
-        ))}
-      </div>
+
+          <div style={{marginBottom:10}}>
+            <div style={{fontSize:11,color:C.muted,fontFamily:FB,marginBottom:4}}>Email</div>
+            <input value={email} onChange={e=>setEmail(e.target.value)} type="email"
+              style={{width:"100%",padding:"11px 14px",borderRadius:10,border:`1px solid ${C.border}`,background:C.card,fontSize:13,fontFamily:FB,color:C.dark,outline:"none"}}/>
+          </div>
+
+          <div style={{fontSize:11,fontWeight:700,color:C.dark,fontFamily:FB,textTransform:"uppercase",letterSpacing:1,margin:"16px 0 12px"}}>Change Password</div>
+
+          <div style={{marginBottom:10}}>
+            <div style={{fontSize:11,color:C.muted,fontFamily:FB,marginBottom:4}}>New password</div>
+            <input value={newPassword} onChange={e=>setNewPassword(e.target.value)} type="password" placeholder="Leave blank to keep current"
+              style={{width:"100%",padding:"11px 14px",borderRadius:10,border:`1px solid ${C.border}`,background:C.card,fontSize:13,fontFamily:FB,color:C.dark,outline:"none"}}/>
+          </div>
+
+          <div style={{marginBottom:16}}>
+            <div style={{fontSize:11,color:C.muted,fontFamily:FB,marginBottom:4}}>Confirm new password</div>
+            <input value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} type="password" placeholder="Repeat new password"
+              style={{width:"100%",padding:"11px 14px",borderRadius:10,border:`1px solid ${C.border}`,background:C.card,fontSize:13,fontFamily:FB,color:C.dark,outline:"none"}}/>
+          </div>
+
+          {error&&<div style={{fontSize:12,color:C.accent,fontFamily:FB,marginBottom:12,background:C.accentLight,padding:"8px 12px",borderRadius:8}}>{error}</div>}
+          {success&&<div style={{fontSize:12,color:"#2D6A4F",fontFamily:FB,marginBottom:12,background:"#E8F5EE",padding:"8px 12px",borderRadius:8}}>{success}</div>}
+
+          <button onClick={handleSave} disabled={loading}
+            style={{width:"100%",padding:13,borderRadius:12,background:loading?C.border:C.dark,color:"white",border:"none",fontWeight:700,fontSize:13,fontFamily:FBtn,cursor:loading?"not-allowed":"pointer",marginBottom:10}}>
+            {loading?"Saving...":"Save Changes"}
+          </button>
+        </div>
+      )}
+
+      {success&&!editing&&<div style={{fontSize:12,color:"#2D6A4F",fontFamily:FB,marginBottom:12,background:"#E8F5EE",padding:"8px 12px",borderRadius:8,textAlign:"center"}}>{success}</div>}
+
       <button onClick={onSignOut} style={{width:"100%",padding:12,borderRadius:12,background:C.tag,color:C.dark,border:`1px solid ${C.border}`,fontWeight:700,fontSize:13,fontFamily:FBtn,cursor:"pointer"}}>Sign Out</button>
     </div>
   );
@@ -719,7 +807,7 @@ function App(){
         {screen==="feed"&&haul&&!checkout&&<DetailScreen haul={haul} onBack={()=>setHaul(null)} onCheckout={(items,total)=>requireAuth("buy",()=>{setCheckout({items,total});setScreen("checkout");})}/>}
         {screen==="checkout"&&checkout&&<CheckoutScreen items={checkout.items} total={checkout.total} onDone={()=>{setCheckout(null);setHaul(null);setScreen("feed");}}/>}
         {screen==="snap"&&<SnapScreen onBack={()=>setScreen("feed")} onCheckout={(items,total)=>requireAuth("buy",()=>{setCheckout({items,total});setScreen("checkout");})}/>}
-        {screen==="profile"&&<ProfileScreen user={user} onSignOut={async()=>{await supabase.auth.signOut();setUser(null);setScreen("feed");}}/>}
+        {screen==="profile"&&<ProfileScreen user={user} onSignOut={async()=>{await supabase.auth.signOut();setUser(null);setScreen("feed");}} onUserUpdate={(u)=>setUser(u)}/>}
       </div>
       {showNav&&<Nav screen={screen} set={handleNavChange} user={user}/>}
       {authModal&&<AuthModal reason={authModal} onClose={()=>setAuthModal(null)} onSuccess={handleAuthSuccess}/>}
