@@ -191,8 +191,8 @@ function FeedScreen({onOpen,onSnap,onProfile,onAuthRequired}){
                   {h.items.length>3&&<div style={{background:C.tag,borderRadius:20,padding:"4px 10px",fontSize:11,color:C.muted,fontFamily:FB}}>+{h.items.length-3} more</div>}
                 </div>
                 <div style={{display:"flex",gap:8}}>
-                  <button onClick={e=>{e.stopPropagation();onAuthRequired("buy");}} style={{flex:1,padding:10,borderRadius:12,background:C.accent,color:"white",border:"none",fontWeight:700,fontSize:12,fontFamily:FBtn,cursor:"pointer"}}>Buy Full Look · ${total.toFixed(0)}</button>
-                  <button style={{padding:"10px 12px",borderRadius:12,background:C.tag,color:C.dark,border:"none",fontWeight:600,fontSize:12,fontFamily:FB,cursor:"pointer"}}>Pick Items</button>
+                  <button onClick={e=>{e.stopPropagation();onAuthRequired("buy",()=>onOpen(h));}} style={{flex:1,padding:10,borderRadius:12,background:C.accent,color:"white",border:"none",fontWeight:700,fontSize:12,fontFamily:FBtn,cursor:"pointer"}}>Buy Full Look · ${total.toFixed(0)}</button>
+                  <button onClick={e=>{e.stopPropagation();onAuthRequired("buy",()=>onOpen(h));}} style={{padding:"10px 12px",borderRadius:12,background:C.tag,color:C.dark,border:"none",fontWeight:600,fontSize:12,fontFamily:FB,cursor:"pointer"}}>Pick Items</button>
                 </div>
               </div>
             </div>
@@ -715,7 +715,7 @@ function App(){
         <span>9:41</span><span>●●●○ 🔋</span>
       </div>
       <div style={{flex:1,position:"relative",overflow:"hidden"}}>
-        {screen==="feed"&&!haul&&<FeedScreen onOpen={h=>{setHaul(h);}} onSnap={()=>handleNavChange("snap")} onProfile={()=>setScreen("profile")} onAuthRequired={(r)=>requireAuth(r,null)}/>}
+        {screen==="feed"&&!haul&&<FeedScreen onOpen={h=>{setHaul(h);}} onSnap={()=>handleNavChange("snap")} onProfile={()=>setScreen("profile")} onAuthRequired={(r,a)=>requireAuth(r,a)}/>}
         {screen==="feed"&&haul&&!checkout&&<DetailScreen haul={haul} onBack={()=>setHaul(null)} onCheckout={(items,total)=>requireAuth("buy",()=>{setCheckout({items,total});setScreen("checkout");})}/>}
         {screen==="checkout"&&checkout&&<CheckoutScreen items={checkout.items} total={checkout.total} onDone={()=>{setCheckout(null);setHaul(null);setScreen("feed");}}/>}
         {screen==="snap"&&<SnapScreen onBack={()=>setScreen("feed")} onCheckout={(items,total)=>requireAuth("buy",()=>{setCheckout({items,total});setScreen("checkout");})}/>}
