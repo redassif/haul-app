@@ -4,13 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Haul — Shop Any Look</title>
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
-    body{background:#EDE8E0;font-family:'DM Sans',sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh}
+    body{background:#EDEDED;font-family:'DM Sans',sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh}
     ::-webkit-scrollbar{width:0}
     @keyframes bounce{from{transform:translateY(0)}to{transform:translateY(-8px)}}
     @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
@@ -20,16 +20,16 @@
 <div id="root"></div>
 <script type="text/babel">
 const {useState} = React;
-const C = {bg:"#F8F4EF",dark:"#1A1209",card:"#FFFFFF",accent:"#E8442C",accentLight:"#E8442C18",muted:"#9A8F82",border:"#E8E0D5",tag:"#F0EBE3"};
-const FD="'Playfair Display',serif", FB="'DM Sans',sans-serif";
+const C = {bg:"#FAFAFA",dark:"#141414",card:"#FFFFFF",accent:"#8B2635",accentLight:"#8B263512",muted:"#6B6B6B",border:"#E8E8E8",tag:"#F2F0ED"};
+const FD="'Libre Baskerville',serif", FB="'Libre Baskerville',serif", FBtn="'DM Sans',sans-serif";
 
 const HAULS=[
-  {id:4,creator:"Reda A.",handle:"@redassif",av:"R",avc:"#E8442C",title:"Accessories Haul 💛",views:"1",likes:"1",thumb:"💛",bg:"linear-gradient(135deg,#FFF4D4,#FFE8A0)",items:[
+  {id:4,creator:"Reda A.",handle:"@redassif",av:"R",avc:"#8B2635",title:"Accessories Haul 💛",views:"1",likes:"1",thumb:"💛",bg:"linear-gradient(135deg,#FFF4D4,#FFE8A0)",items:[
     {id:101,name:"A Little High Maintenance Anklet",brand:"Fashion Nova",price:10.99,color:"#C9A84C",checked:true,link:"https://www.fashionnova.com/products/a-little-high-maintenance-anklet-gold"},
     {id:102,name:"Leather Hook Clasp Bracelet",brand:"Shein",price:5.99,color:"#8B4513",checked:true,link:"https://us.shein.com/1pc-10mm-Thick-Versatile-Hook-Clasp-Leather-Bracelet-Women-s-Daily-Jewelry-Gift-p-123208269.html"},
     {id:103,name:"3pcs Stainless Steel Stackable Bracelets",brand:"Shein",price:6.99,color:"#C9A84C",checked:true,link:"https://us.shein.com/3pcs-Set-Stainless-Steel-Texture-Bracelets-Minimalist-Bangle-Bracelet-For-Women-Elegant-Stackable-Bracelets-For-Daily-Party-Jewelry-Christmas-Gifts-p-44834842.html"},
   ]},
-  {id:1,creator:"Zara M.",handle:"@zarastyles",av:"Z",avc:"#E8442C",title:"Spring Minimalist Haul ✨",views:"128K",likes:"14.2K",thumb:"🌸",bg:"linear-gradient(135deg,#F9E4D4,#F0D5C8)",items:[
+  {id:1,creator:"Zara M.",handle:"@zarastyles",av:"Z",avc:"#8B2635",title:"Spring Minimalist Haul ✨",views:"128K",likes:"14.2K",thumb:"🌸",bg:"linear-gradient(135deg,#F9E4D4,#F0D5C8)",items:[
     {id:1,name:"Linen Oversized Blazer",brand:"Zara",price:89.99,color:"#8B7355",checked:true,link:"https://www.zara.com/us/en/linen-blend-double-breasted-blazer-p08372245.html"},
     {id:2,name:"Wide Leg Trousers",brand:"Tronjori",price:32.99,color:"#4A4A4A",checked:true,link:"https://www.amazon.com/Tronjori-Women-Casual-Palazzo-Trousers/dp/B07GYXFPB4"},
     {id:3,name:"Strappy Heeled Sandals",brand:"Allegra K",price:38.99,color:"#C4A882",checked:false,link:"https://www.amazon.com/Allegra-Womens-Strappy-Straps-Sandals/dp/B07LCC6P4Q"},
@@ -38,7 +38,7 @@ const HAULS=[
   {id:2,creator:"Mia Chen",handle:"@miafashion",av:"M",avc:"#2D6A4F",title:"Y2K Comeback Pieces 🌀",views:"89K",likes:"9.8K",thumb:"⭐",bg:"linear-gradient(135deg,#D4E8F9,#C8D5F0)",items:[
     {id:5,name:"Low Rise Cargo Pants",brand:"Urban Outfitters",price:79.99,color:"#556B2F",checked:true,link:"https://www.urbanoutfitters.com/shop/hybrid/bdg-360-utility-low-rise-straight-leg-pant"},
     {id:6,name:"Butterfly Crop Top",brand:"Shein",price:19.99,color:"#FF69B4",checked:true,link:"https://www.prettylittlething.us/product/petite-slogan-diamante-graphic-fitted-t-shirt_plt21653?colour=white"},
-    {id:7,name:"Platform Sneakers",brand:"Nike",price:120.00,color:"#E0E0E0",checked:true,link:"https://www.amazon.com/Womens-Sneaker-White-Black-Orange/dp/B0B6FRWL4G?th=1&psc=1"}
+    {id:7,name:"Platform Sneakers",brand:"Nike",price:120.00,color:"#F2F2F2",checked:true,link:"https://www.amazon.com/Womens-Sneaker-White-Black-Orange/dp/B0B6FRWL4G?th=1&psc=1"}
   ]},
   {id:3,creator:"Leila K.",handle:"@leilaootd",av:"L",avc:"#7B2D8B",title:"Office to Out — Work Fits 💼",views:"204K",likes:"22.1K",thumb:"💼",bg:"linear-gradient(135deg,#E8D4F9,#D8C8F0)",items:[
     {id:9,name:"Tailored Midi Skirt",brand:"& Other Stories",price:99.99,color:"#2C3E50",checked:true,link:"https://www.stories.com/en-us/product/tailored-pencil-midi-skirt-black-1214238001/"},
@@ -59,7 +59,7 @@ function FeedScreen({onOpen,onSnap,onProfile}){
     <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
       <div style={{padding:"16px 16px 0",flexShrink:0}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-          <div style={{fontSize:26,fontWeight:800,color:C.dark,fontFamily:FD,letterSpacing:-1}}>haul<span style={{color:C.accent}}>.</span></div>
+          <div style={{fontSize:28,fontWeight:800,color:C.dark,fontFamily:FD,fontStyle:"italic",letterSpacing:-1,letterSpacing:-1}}>haul<span style={{color:C.accent}}>.</span></div>
           <button style={{padding:"7px 14px",borderRadius:20,background:C.accent,color:"white",border:"none",fontFamily:FB,fontWeight:700,fontSize:12,cursor:"pointer"}}>+ Post Haul</button>
         </div>
         <div style={{fontSize:11,color:C.muted,fontFamily:FB,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:12}}>Trending Hauls</div>
@@ -100,7 +100,7 @@ function FeedScreen({onOpen,onSnap,onProfile}){
                   {h.items.length>3&&<div style={{background:C.tag,borderRadius:20,padding:"4px 10px",fontSize:11,color:C.muted,fontFamily:FB}}>+{h.items.length-3} more</div>}
                 </div>
                 <div style={{display:"flex",gap:8}}>
-                  <button style={{flex:1,padding:10,borderRadius:12,background:C.accent,color:"white",border:"none",fontWeight:700,fontSize:12,fontFamily:FB,cursor:"pointer"}}>Buy Full Look · ${total.toFixed(0)}</button>
+                  <button style={{flex:1,padding:10,borderRadius:12,background:C.accent,color:"white",border:"none",fontWeight:700,fontSize:12,fontFamily:FBtn,cursor:"pointer"}}>Buy Full Look · ${total.toFixed(0)}</button>
                   <button style={{padding:"10px 12px",borderRadius:12,background:C.tag,color:C.dark,border:"none",fontWeight:600,fontSize:12,fontFamily:FB,cursor:"pointer"}}>Pick Items</button>
                 </div>
               </div>
@@ -211,7 +211,7 @@ function DetailScreen({haul,onBack,onCheckout}){
           <div style={{fontSize:12,color:C.muted,fontFamily:FB}}>{selected.length} item{selected.length!==1?"s":""} selected</div>
           <div style={{fontSize:19,fontWeight:800,color:C.dark,fontFamily:FD}}>${total.toFixed(2)}</div>
         </div>
-        <button onClick={()=>selected.length>0&&onCheckout(selected,total)} disabled={selected.length===0} style={{width:"100%",padding:14,borderRadius:14,border:"none",background:selected.length>0?C.accent:C.border,color:selected.length>0?"white":C.muted,fontWeight:800,fontSize:14,fontFamily:FB,cursor:selected.length>0?"pointer":"not-allowed"}}>
+        <button onClick={()=>selected.length>0&&onCheckout(selected,total)} disabled={selected.length===0} style={{width:"100%",padding:14,borderRadius:14,border:"none",background:selected.length>0?C.accent:C.border,color:selected.length>0?"white":C.muted,fontWeight:800,fontSize:14,fontFamily:FBtn,cursor:selected.length>0?"pointer":"not-allowed"}}>
           {selected.length>0?`Buy ${selected.length===haul.items.length?"Full Look":"Selected"} — 1 Checkout`:"Select items to buy"}
         </button>
       </div>
@@ -430,7 +430,7 @@ function CheckoutScreen({items,total,onDone}){
         ))}
       </div>
       <div style={{fontSize:11,color:C.muted,fontFamily:FB,marginBottom:20}}>Items ship directly to you from each retailer.</div>
-      <button onClick={onDone} style={{width:"100%",padding:14,borderRadius:14,background:C.accent,color:"white",border:"none",fontWeight:800,fontSize:14,fontFamily:FB,cursor:"pointer"}}>Back to Feed</button>
+      <button onClick={onDone} style={{width:"100%",padding:14,borderRadius:14,background:C.accent,color:"white",border:"none",fontWeight:800,fontSize:14,fontFamily:FBtn,cursor:"pointer"}}>Back to Feed</button>
     </div>
   );
 
@@ -559,7 +559,7 @@ function ProfileScreen(){
 function Nav({screen,set}){
   const tabs=[{id:"feed",icon:"▶",label:"Feed"},{id:"snap",icon:"✨",label:"AI Stylist"},{id:"profile",icon:"👤",label:"Profile"}];
   return(
-    <div style={{position:"absolute",bottom:0,left:0,right:0,background:"white",borderTop:`1px solid ${C.border}`,display:"flex",padding:"8px 0 18px"}}>
+    <div style={{position:"absolute",bottom:0,left:0,right:0,background:"#FAFAFA",borderTop:`1px solid ${C.border}`,display:"flex",padding:"8px 0 18px"}}>
       {tabs.map(t=>(
         <button key={t.id} onClick={()=>set(t.id)} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2,border:"none",background:"none",cursor:"pointer",color:screen===t.id?C.accent:C.muted}}>
           <span style={{fontSize:18}}>{t.icon}</span>
