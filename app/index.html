@@ -8,6 +8,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
     body{background:#EDEDED;font-family:'DM Sans',sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh}
@@ -19,7 +20,12 @@
 <body>
 <div id="root"></div>
 <script type="text/babel">
-const {useState} = React;
+const {useState, useEffect} = React;
+
+const supabase = window.supabase.createClient(
+  'https://kurpgrqmwvyekkynsmuh.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt1cnBncnFtd3Z5ZWtreW5zbXVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxNzU3ODgsImV4cCI6MjA5MTc1MTc4OH0.M7D8EN4p_wSHch9We6gWQjgqesXwpdnd5DcBkoSql10'
+);
 const C = {bg:"#FAFAFA",dark:"#141414",card:"#FFFFFF",accent:"#8B2635",accentLight:"#8B263512",muted:"#6B6B6B",border:"#E8E8E8",tag:"#F2F0ED"};
 const FD="'Libre Baskerville',serif", FB="'Libre Baskerville',serif", FBtn="'DM Sans',sans-serif";
 
@@ -54,13 +60,98 @@ function Av({l,c,s=36}){
 
 function Dot({col}){return <div style={{width:14,height:14,borderRadius:"50%",background:col,border:"1.5px solid #E8E0D5",flexShrink:0}}/>;}
 
-function FeedScreen({onOpen,onSnap,onProfile}){
+
+function AuthModal({onClose, onSuccess, reason}){
+  const [mode,setMode]=useState("login");
+  const [email,setEmail]=useState("");
+  const [password,setPassword]=useState("");
+  const [name,setName]=useState("");
+  const [loading,setLoading]=useState(false);
+  const [error,setError]=useState(null);
+
+  const reasonText={
+    buy:"Sign in to complete your purchase",
+    post:"Sign in to post a haul as a creator",
+    stylist:"Sign in to use the AI Stylist"
+  }[reason]||"Sign in to continue";
+
+  const handleSubmit=async()=>{
+    setLoading(true);
+    setError(null);
+    try{
+      if(mode==="signup"){
+        const{data,error}=await supabase.auth.signUp({
+          email,password,
+          options:{data:{full_name:name,is_creator:reason==="post"}}
+        });
+        if(error) throw error;
+        onSuccess(data.user);
+      } else {
+        const{data,error}=await supabase.auth.signInWithPassword({email,password});
+        if(error) throw error;
+        onSuccess(data.user);
+      }
+    }catch(err){
+      setError(err.message);
+    }
+    setLoading(false);
+  };
+
+  return(
+    <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.6)",zIndex:200,display:"flex",alignItems:"flex-end"}}>
+      <div style={{width:"100%",background:C.bg,borderRadius:"24px 24px 0 0",padding:"24px 20px 40px"}}>
+        <div style={{width:36,height:4,background:C.border,borderRadius:2,margin:"0 auto 20px"}}/>
+        <div style={{fontSize:11,color:C.accent,fontFamily:FB,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>{reasonText}</div>
+        <div style={{fontSize:22,fontWeight:700,fontStyle:"italic",color:C.dark,fontFamily:FD,marginBottom:20}}>
+          {mode==="login"?"Welcome back":"Create account"}
+        </div>
+
+        {mode==="signup"&&(
+          <div style={{marginBottom:12}}>
+            <div style={{fontSize:11,color:C.muted,fontFamily:FB,marginBottom:4}}>Full name</div>
+            <input value={name} onChange={e=>setName(e.target.value)} placeholder="Jane Doe"
+              style={{width:"100%",padding:"11px 14px",borderRadius:10,border:`1px solid ${C.border}`,background:C.card,fontSize:13,fontFamily:FB,color:C.dark,outline:"none"}}/>
+          </div>
+        )}
+
+        <div style={{marginBottom:12}}>
+          <div style={{fontSize:11,color:C.muted,fontFamily:FB,marginBottom:4}}>Email</div>
+          <input value={email} onChange={e=>setEmail(e.target.value)} placeholder="jane@email.com" type="email"
+            style={{width:"100%",padding:"11px 14px",borderRadius:10,border:`1px solid ${C.border}`,background:C.card,fontSize:13,fontFamily:FB,color:C.dark,outline:"none"}}/>
+        </div>
+
+        <div style={{marginBottom:error?12:20}}>
+          <div style={{fontSize:11,color:C.muted,fontFamily:FB,marginBottom:4}}>Password</div>
+          <input value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••" type="password"
+            style={{width:"100%",padding:"11px 14px",borderRadius:10,border:`1px solid ${C.border}`,background:C.card,fontSize:13,fontFamily:FB,color:C.dark,outline:"none"}}/>
+        </div>
+
+        {error&&<div style={{fontSize:12,color:C.accent,fontFamily:FB,marginBottom:14,background:C.accentLight,padding:"8px 12px",borderRadius:8}}>{error}</div>}
+
+        <button onClick={handleSubmit} disabled={loading||!email||!password}
+          style={{width:"100%",padding:14,borderRadius:12,background:loading||!email||!password?C.border:C.dark,color:"white",border:"none",fontWeight:700,fontSize:14,fontFamily:FBtn,cursor:loading||!email||!password?"not-allowed":"pointer",marginBottom:12}}>
+          {loading?"Please wait...":(mode==="login"?"Sign In":"Create Account")}
+        </button>
+
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <button onClick={()=>{setMode(mode==="login"?"signup":"login");setError(null);}}
+            style={{fontSize:12,color:C.accent,fontFamily:FB,background:"none",border:"none",cursor:"pointer",padding:0}}>
+            {mode==="login"?"Don't have an account? Sign up":"Already have an account? Sign in"}
+          </button>
+          <button onClick={onClose} style={{fontSize:12,color:C.muted,fontFamily:FB,background:"none",border:"none",cursor:"pointer",padding:0}}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FeedScreen({onOpen,onSnap,onProfile,onAuthRequired}){
   return(
     <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
       <div style={{padding:"16px 16px 0",flexShrink:0}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
           <div style={{fontSize:28,fontWeight:800,color:C.dark,fontFamily:FD,fontStyle:"italic",letterSpacing:-1,letterSpacing:-1}}>haul<span style={{color:C.accent}}>.</span></div>
-          <button style={{padding:"7px 14px",borderRadius:20,background:C.accent,color:"white",border:"none",fontFamily:FB,fontWeight:700,fontSize:12,cursor:"pointer"}}>+ Post Haul</button>
+          <button onClick={()=>onAuthRequired("post")} style={{padding:"7px 14px",borderRadius:20,background:C.accent,color:"white",border:"none",fontFamily:FB,fontWeight:700,fontSize:12,cursor:"pointer"}}>+ Post Haul</button>
         </div>
         <div style={{fontSize:11,color:C.muted,fontFamily:FB,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:12}}>Trending Hauls</div>
       </div>
@@ -100,7 +191,7 @@ function FeedScreen({onOpen,onSnap,onProfile}){
                   {h.items.length>3&&<div style={{background:C.tag,borderRadius:20,padding:"4px 10px",fontSize:11,color:C.muted,fontFamily:FB}}>+{h.items.length-3} more</div>}
                 </div>
                 <div style={{display:"flex",gap:8}}>
-                  <button style={{flex:1,padding:10,borderRadius:12,background:C.accent,color:"white",border:"none",fontWeight:700,fontSize:12,fontFamily:FBtn,cursor:"pointer"}}>Buy Full Look · ${total.toFixed(0)}</button>
+                  <button onClick={e=>{e.stopPropagation();onAuthRequired("buy");}} style={{flex:1,padding:10,borderRadius:12,background:C.accent,color:"white",border:"none",fontWeight:700,fontSize:12,fontFamily:FBtn,cursor:"pointer"}}>Buy Full Look · ${total.toFixed(0)}</button>
                   <button style={{padding:"10px 12px",borderRadius:12,background:C.tag,color:C.dark,border:"none",fontWeight:600,fontSize:12,fontFamily:FB,cursor:"pointer"}}>Pick Items</button>
                 </div>
               </div>
@@ -527,42 +618,53 @@ function CheckoutScreen({items,total,onDone}){
   );
 }
 
-function ProfileScreen(){
+function ProfileScreen({user, onSignOut}){
+  const initials = user?.user_metadata?.full_name
+    ? user.user_metadata.full_name.split(" ").map(n=>n[0]).join("").toUpperCase().slice(0,2)
+    : user?.email?.[0]?.toUpperCase()||"?";
+
+  if(!user) return(
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",padding:32,textAlign:"center"}}>
+      <div style={{fontSize:48,marginBottom:16}}>👤</div>
+      <div style={{fontSize:20,fontWeight:700,fontStyle:"italic",color:C.dark,fontFamily:FD,marginBottom:8}}>Your Profile</div>
+      <div style={{fontSize:13,color:C.muted,fontFamily:FB,lineHeight:1.7,marginBottom:24}}>Sign in to view your profile, track orders, and manage your hauls.</div>
+    </div>
+  );
+
   return(
     <div style={{padding:"16px 16px 100px",overflowY:"auto",height:"100%"}}>
-      <div style={{fontSize:17,fontWeight:800,color:C.dark,fontFamily:FD,marginBottom:18}}>Profile</div>
+      <div style={{fontSize:17,fontWeight:700,fontStyle:"italic",color:C.dark,fontFamily:FD,marginBottom:18}}>Profile</div>
       <div style={{textAlign:"center",marginBottom:20}}>
-        <div style={{width:68,height:68,borderRadius:"50%",background:C.accent,display:"flex",alignItems:"center",justifyContent:"center",fontSize:26,fontWeight:800,color:"white",fontFamily:FB,margin:"0 auto 10px"}}>Y</div>
-        <div style={{fontSize:17,fontWeight:800,color:C.dark,fontFamily:FD}}>Your Profile</div>
-        <div style={{fontSize:12,color:C.muted,fontFamily:FB}}>Fashion enthusiast</div>
-        <div style={{display:"inline-block",marginTop:6,padding:"4px 12px",background:C.accentLight,borderRadius:20,fontSize:11,color:C.accent,fontWeight:700,fontFamily:FB}}>✓ Verified Creator</div>
+        <div style={{width:68,height:68,borderRadius:"50%",background:C.accent,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,fontWeight:800,color:"white",fontFamily:FB,margin:"0 auto 10px"}}>{initials}</div>
+        <div style={{fontSize:17,fontWeight:700,fontStyle:"italic",color:C.dark,fontFamily:FD}}>{user.user_metadata?.full_name||"Creator"}</div>
+        <div style={{fontSize:12,color:C.muted,fontFamily:FB,marginBottom:6}}>{user.email}</div>
+        {user.user_metadata?.is_creator&&<div style={{display:"inline-block",padding:"4px 12px",background:C.accentLight,borderRadius:20,fontSize:11,color:C.accent,fontWeight:700,fontFamily:FB}}>✓ Verified Creator</div>}
       </div>
-      <div style={{display:"flex",gap:10,marginBottom:20}}>
-        {[{l:"Hauls",v:"12"},{l:"Purchased",v:"$2.4K"},{l:"Followers",v:"8.2K"}].map(s=>(
+      <div style={{display:"flex",gap:10,marginBottom:24}}>
+        {[{l:"Hauls",v:"0"},{l:"Purchased",v:"$0"},{l:"Followers",v:"0"}].map(s=>(
           <div key={s.l} style={{flex:1,background:C.tag,borderRadius:14,padding:"12px 6px",textAlign:"center"}}>
             <div style={{fontSize:18,fontWeight:800,color:C.accent,fontFamily:FD}}>{s.v}</div>
             <div style={{fontSize:10,color:C.muted,fontFamily:FB}}>{s.l}</div>
           </div>
         ))}
       </div>
-      <div style={{fontSize:11,fontWeight:700,color:C.dark,fontFamily:FB,textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Recent Orders</div>
-      {["Spring Minimalist Haul · $199","Y2K Pieces · $220","Snap Purchase · $269"].map((o,i)=>(
-        <div key={i} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:12,marginBottom:8,display:"flex",justifyContent:"space-between"}}>
-          <span style={{fontSize:12,color:C.dark,fontFamily:FB}}>{o.split("·")[0]}</span>
-          <span style={{fontSize:12,fontWeight:700,color:C.accent,fontFamily:FB}}>{o.split("·")[1]}</span>
-        </div>
-      ))}
+      <button onClick={onSignOut} style={{width:"100%",padding:12,borderRadius:12,background:C.tag,color:C.dark,border:`1px solid ${C.border}`,fontWeight:700,fontSize:13,fontFamily:FBtn,cursor:"pointer"}}>Sign Out</button>
     </div>
   );
 }
 
-function Nav({screen,set}){
+function Nav({screen,set,user}){
   const tabs=[{id:"feed",icon:"▶",label:"Feed"},{id:"snap",icon:"✨",label:"AI Stylist"},{id:"profile",icon:"👤",label:"Profile"}];
   return(
-    <div style={{position:"absolute",bottom:0,left:0,right:0,background:"#FAFAFA",borderTop:`1px solid ${C.border}`,display:"flex",padding:"8px 0 18px"}}>
+    <div style={{position:"absolute",bottom:0,left:0,right:0,background:"#EDEDED",borderTop:`1px solid ${C.border}`,display:"flex",padding:"8px 0 18px"}}>
       {tabs.map(t=>(
         <button key={t.id} onClick={()=>set(t.id)} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2,border:"none",background:"none",cursor:"pointer",color:screen===t.id?C.accent:C.muted}}>
-          <span style={{fontSize:18}}>{t.icon}</span>
+          {t.id==="profile"&&user
+            ? <div style={{width:20,height:20,borderRadius:"50%",background:C.accent,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:800,color:"white",fontFamily:FB}}>
+                {(user.user_metadata?.full_name||user.email||"?")[0].toUpperCase()}
+              </div>
+            : <span style={{fontSize:18}}>{t.icon}</span>
+          }
           <span style={{fontSize:10,fontFamily:FB,fontWeight:screen===t.id?700:500}}>{t.label}</span>
         </button>
       ))}
@@ -574,7 +676,38 @@ function App(){
   const [screen,setScreen]=useState("feed");
   const [haul,setHaul]=useState(null);
   const [checkout,setCheckout]=useState(null);
+  const [user,setUser]=useState(null);
+  const [authModal,setAuthModal]=useState(null); // null | "buy" | "post" | "stylist"
+  const [pendingAction,setPendingAction]=useState(null);
   const showNav=screen==="feed"||screen==="snap"||screen==="profile";
+
+  useEffect(()=>{
+    supabase.auth.getSession().then(({data:{session}})=>{
+      setUser(session?.user||null);
+    });
+    const{data:{subscription}}=supabase.auth.onAuthStateChange((_,session)=>{
+      setUser(session?.user||null);
+    });
+    return()=>subscription.unsubscribe();
+  },[]);
+
+  const requireAuth=(reason, action)=>{
+    if(user){ action&&action(); return; }
+    setPendingAction(()=>action);
+    setAuthModal(reason);
+  };
+
+  const handleAuthSuccess=(u)=>{
+    setUser(u);
+    setAuthModal(null);
+    if(pendingAction){ pendingAction(); setPendingAction(null); }
+  };
+
+  const handleNavChange=(tab)=>{
+    if(tab==="snap"){ requireAuth("stylist",()=>setScreen("snap")); return; }
+    setScreen(tab);
+  };
+
   return(
     <div style={{width:390,height:780,background:C.bg,borderRadius:44,border:"10px solid #2A2010",boxShadow:"0 40px 100px rgba(0,0,0,0.35)",position:"relative",overflow:"hidden",display:"flex",flexDirection:"column"}}>
       <div style={{position:"absolute",top:0,left:"50%",transform:"translateX(-50%)",width:110,height:26,background:"#2A2010",borderRadius:"0 0 16px 16px",zIndex:100}}/>
@@ -582,13 +715,14 @@ function App(){
         <span>9:41</span><span>●●●○ 🔋</span>
       </div>
       <div style={{flex:1,position:"relative",overflow:"hidden"}}>
-        {screen==="feed"&&!haul&&<FeedScreen onOpen={h=>{setHaul(h);}} onSnap={()=>setScreen("snap")} onProfile={()=>setScreen("profile")}/>}
-        {screen==="feed"&&haul&&!checkout&&<DetailScreen haul={haul} onBack={()=>setHaul(null)} onCheckout={(items,total)=>{setCheckout({items,total});setScreen("checkout");}}/>}
+        {screen==="feed"&&!haul&&<FeedScreen onOpen={h=>{setHaul(h);}} onSnap={()=>handleNavChange("snap")} onProfile={()=>setScreen("profile")} onAuthRequired={(r)=>requireAuth(r,null)}/>}
+        {screen==="feed"&&haul&&!checkout&&<DetailScreen haul={haul} onBack={()=>setHaul(null)} onCheckout={(items,total)=>requireAuth("buy",()=>{setCheckout({items,total});setScreen("checkout");})}/>}
         {screen==="checkout"&&checkout&&<CheckoutScreen items={checkout.items} total={checkout.total} onDone={()=>{setCheckout(null);setHaul(null);setScreen("feed");}}/>}
-        {screen==="snap"&&<SnapScreen onBack={()=>setScreen("feed")} onCheckout={(items,total)=>{setCheckout({items,total});setScreen("checkout");}}/>}
-        {screen==="profile"&&<ProfileScreen/>}
+        {screen==="snap"&&<SnapScreen onBack={()=>setScreen("feed")} onCheckout={(items,total)=>requireAuth("buy",()=>{setCheckout({items,total});setScreen("checkout");})}/>}
+        {screen==="profile"&&<ProfileScreen user={user} onSignOut={async()=>{await supabase.auth.signOut();setUser(null);setScreen("feed");}}/>}
       </div>
-      {showNav&&<Nav screen={screen} set={setScreen}/>}
+      {showNav&&<Nav screen={screen} set={handleNavChange} user={user}/>}
+      {authModal&&<AuthModal reason={authModal} onClose={()=>setAuthModal(null)} onSuccess={handleAuthSuccess}/>}
     </div>
   );
 }
