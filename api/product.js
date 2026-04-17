@@ -1,3 +1,5 @@
+import { createClient } from '@supabase/supabase-js';
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -10,8 +12,6 @@ export default async function handler(req, res) {
     if (!urls || !urls.length) return res.status(400).json({ error: "No URLs provided" });
     if (!process.env.RYE_API_KEY) return res.status(500).json({ error: "RYE_API_KEY not set" });
 
-    // Product lookup is prod-only endpoint, always use prod key
-    const PROD_KEY = process.env.RYE_PROD_KEY || process.env.RYE_API_KEY;
     const RYE_BASE = "https://api.rye.com";
 
     const results = await Promise.all(
@@ -22,7 +22,7 @@ export default async function handler(req, res) {
             {
               method: "GET",
               headers: {
-                "Authorization": `Bearer ${PROD_KEY}`,
+                "Authorization": `Bearer ${process.env.RYE_API_KEY}`,
               },
             }
           );
@@ -44,7 +44,6 @@ export default async function handler(req, res) {
             return { id, success: false, error: "Invalid JSON from Rye" };
           }
 
-          // Parse price from various possible formats
           let price = null;
           let priceDisplay = null;
 
@@ -82,6 +81,33 @@ export default async function handler(req, res) {
         }
       })
     );
+
+    // If Supabase service key is available, update haul_items in DB directly
+    if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY) {
+      try {
+        const supabaseAdmin = createClient(
+          process.env.SUPABASE_URL,
+          process.env.SUPABASE_SERVICE_KEY
+        );
+
+        await Promise.all(
+          results
+            .filter(p => p.success && p.price)
+            .map(p => supabaseAdmin
+              .from("haul_items")
+              .update({
+                ...(p.name && { name: p.name }),
+                ...(p.brand && { brand: p.brand }),
+                ...(p.price && { price: p.price }),
+              })
+              .eq("id", p.id)
+            )
+        );
+      } catch (dbErr) {
+        console.error("DB update failed:", dbErr.message);
+        // Don't throw — still return the price data to the frontend
+      }
+    }
 
     return res.status(200).json({ products: results });
 
