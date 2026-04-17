@@ -145,13 +145,13 @@ function AuthModal({onClose, onSuccess, reason}){
   );
 }
 
-function FeedScreen({onOpen,onSnap,onProfile,onAuthRequired}){
+function FeedScreen({onOpen,onSnap,onProfile,onAuthRequired,onPostHaul}){
   return(
     <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
       <div style={{padding:"16px 16px 0",flexShrink:0}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
           <div style={{fontSize:28,fontWeight:800,color:C.dark,fontFamily:FD,fontStyle:"italic",letterSpacing:-1,letterSpacing:-1}}>haul<span style={{color:C.accent}}>.</span></div>
-          <button onClick={()=>onAuthRequired("post")} style={{padding:"7px 14px",borderRadius:20,background:C.accent,color:"white",border:"none",fontFamily:FB,fontWeight:700,fontSize:12,cursor:"pointer"}}>+ Post Haul</button>
+          <button onClick={onPostHaul} style={{padding:"7px 14px",borderRadius:20,background:C.accent,color:"white",border:"none",fontFamily:FBtn,fontWeight:700,fontSize:12,cursor:"pointer"}}>+ Post Haul</button>
         </div>
         <div style={{fontSize:11,color:C.muted,fontFamily:FB,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:12}}>Trending Hauls</div>
       </div>
@@ -741,6 +741,194 @@ function ProfileScreen({user, onSignOut, onUserUpdate}){
   );
 }
 
+
+function PostHaulScreen({user, onBack, onPosted}){
+  const [title,setTitle]=useState("");
+  const [videoFile,setVideoFile]=useState(null);
+  const [videoPreview,setVideoPreview]=useState(null);
+  const [items,setItems]=useState([{id:Date.now(),name:"",link:"",price:"",brand:""}]);
+  const [loading,setLoading]=useState(false);
+  const [error,setError]=useState(null);
+  const [stage,setStage]=useState("form"); // form | uploading | done
+
+  const addItem=()=>setItems(prev=>[...prev,{id:Date.now(),name:"",link:"",price:"",brand:""}]);
+  const removeItem=(id)=>setItems(prev=>prev.filter(i=>i.id!==id));
+  const updateItem=(id,field,val)=>setItems(prev=>prev.map(i=>i.id===id?{...i,[field]:val}:i));
+
+  const handleVideo=(e)=>{
+    const file=e.target.files[0];
+    if(!file) return;
+    setVideoFile(file);
+    setVideoPreview(URL.createObjectURL(file));
+  };
+
+  const handleSubmit=async()=>{
+    if(!title.trim()) return setError("Please add a title.");
+    if(!videoFile) return setError("Please upload a video.");
+    const validItems=items.filter(i=>i.name.trim());
+    if(validItems.length===0) return setError("Add at least one item.");
+
+    setLoading(true);
+    setStage("uploading");
+    setError(null);
+
+    try{
+      // 1. Upload video to Supabase Storage
+      const ext=videoFile.name.split(".").pop();
+      const path=`hauls/${user.id}/${Date.now()}.${ext}`;
+      const{error:uploadError}=await supabase.storage
+        .from("haul-videos")
+        .upload(path, videoFile, {cacheControl:"3600",upsert:false});
+      if(uploadError) throw uploadError;
+
+      // 2. Get public URL
+      const{data:{publicUrl}}=supabase.storage
+        .from("haul-videos")
+        .getPublicUrl(path);
+
+      // 3. Insert haul record
+      const{data:haul,error:haulError}=await supabase
+        .from("hauls")
+        .insert({
+          creator_id: user.id,
+          creator_name: user.user_metadata?.full_name||user.email,
+          creator_handle: "@"+user.email.split("@")[0],
+          title: title.trim(),
+          video_url: publicUrl,
+          views: 0,
+          likes: 0,
+        })
+        .select()
+        .single();
+      if(haulError) throw haulError;
+
+      // 4. Insert items
+      const itemRows=validItems.map(i=>({
+        haul_id: haul.id,
+        name: i.name.trim(),
+        brand: i.brand.trim(),
+        price: parseFloat(i.price)||0,
+        link: i.link.trim(),
+      }));
+      const{error:itemsError}=await supabase.from("haul_items").insert(itemRows);
+      if(itemsError) throw itemsError;
+
+      setStage("done");
+    }catch(err){
+      setError(err.message);
+      setStage("form");
+    }
+    setLoading(false);
+  };
+
+  if(stage==="done") return(
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",padding:32,textAlign:"center"}}>
+      <div style={{fontSize:56,marginBottom:16}}>🎉</div>
+      <div style={{fontSize:22,fontWeight:700,fontStyle:"italic",color:C.dark,fontFamily:FD,marginBottom:8}}>Haul Posted!</div>
+      <div style={{fontSize:13,color:C.muted,fontFamily:FB,lineHeight:1.8,marginBottom:28}}>Your haul is live. Shoppers can now discover and buy your looks.</div>
+      <button onClick={onPosted} style={{width:"100%",padding:14,borderRadius:14,background:C.dark,color:"white",border:"none",fontWeight:700,fontSize:14,fontFamily:FBtn,cursor:"pointer"}}>Back to Feed</button>
+    </div>
+  );
+
+  if(stage==="uploading") return(
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",padding:32,textAlign:"center"}}>
+      <div style={{fontSize:56,marginBottom:16}}>📤</div>
+      <div style={{fontSize:20,fontWeight:700,fontStyle:"italic",color:C.dark,fontFamily:FD,marginBottom:8}}>Uploading your haul...</div>
+      <div style={{fontSize:13,color:C.muted,fontFamily:FB,marginBottom:20}}>This may take a moment.</div>
+      <div style={{display:"flex",gap:6}}>
+        {[0,1,2].map(i=><div key={i} style={{width:8,height:8,borderRadius:"50%",background:C.accent,animation:`bounce 0.8s ease-in-out ${i*0.2}s infinite alternate`}}/>)}
+      </div>
+    </div>
+  );
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+      <div style={{padding:"16px 16px 0",flexShrink:0}}>
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:4}}>
+          <button onClick={onBack} style={{width:32,height:32,borderRadius:"50%",background:C.tag,border:"none",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>←</button>
+          <div style={{fontSize:18,fontWeight:700,fontStyle:"italic",color:C.dark,fontFamily:FD}}>Post a Haul</div>
+        </div>
+        <div style={{fontSize:12,color:C.muted,fontFamily:FB,marginBottom:14,paddingLeft:44}}>Share your look, earn on every purchase.</div>
+      </div>
+
+      <div style={{flex:1,overflowY:"auto",padding:"0 16px 120px"}}>
+
+        {/* Video Upload */}
+        <div style={{marginBottom:16}}>
+          <div style={{fontSize:11,fontWeight:700,color:C.dark,fontFamily:FB,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Video</div>
+          <label style={{display:"block",cursor:"pointer"}}>
+            <input type="file" accept="video/*" onChange={handleVideo} style={{display:"none"}}/>
+            {videoPreview
+              ? <video src={videoPreview} style={{width:"100%",height:160,objectFit:"cover",borderRadius:14,border:`1px solid ${C.border}`}} muted playsInline/>
+              : <div style={{width:"100%",height:160,borderRadius:14,border:`2px dashed ${C.border}`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,background:C.tag}}>
+                  <div style={{fontSize:28}}>🎬</div>
+                  <div style={{fontSize:13,color:C.muted,fontFamily:FB}}>Tap to upload video</div>
+                  <div style={{fontSize:11,color:C.border,fontFamily:FB}}>MP4, MOV up to 100MB</div>
+                </div>
+            }
+          </label>
+          {videoPreview&&<button onClick={()=>{setVideoFile(null);setVideoPreview(null);}} style={{marginTop:6,fontSize:11,color:C.accent,fontFamily:FB,background:"none",border:"none",cursor:"pointer",padding:0}}>Remove video</button>}
+        </div>
+
+        {/* Title */}
+        <div style={{marginBottom:16}}>
+          <div style={{fontSize:11,fontWeight:700,color:C.dark,fontFamily:FB,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Title</div>
+          <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="e.g. Summer Office Looks 💼"
+            style={{width:"100%",padding:"11px 14px",borderRadius:10,border:`1px solid ${C.border}`,background:C.card,fontSize:13,fontFamily:FB,color:C.dark,outline:"none"}}/>
+        </div>
+
+        {/* Items */}
+        <div style={{marginBottom:12}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+            <div style={{fontSize:11,fontWeight:700,color:C.dark,fontFamily:FB,textTransform:"uppercase",letterSpacing:1}}>Items in this haul</div>
+            <button onClick={addItem} style={{fontSize:12,color:C.accent,fontFamily:FB,fontWeight:700,background:"none",border:"none",cursor:"pointer",padding:0}}>+ Add item</button>
+          </div>
+
+          {items.map((item,idx)=>(
+            <div key={item.id} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:12,marginBottom:10}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                <div style={{fontSize:12,fontWeight:700,color:C.dark,fontFamily:FB}}>Item {idx+1}</div>
+                {items.length>1&&<button onClick={()=>removeItem(item.id)} style={{fontSize:11,color:C.muted,fontFamily:FB,background:"none",border:"none",cursor:"pointer",padding:0}}>Remove</button>}
+              </div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                <div style={{flex:"1 1 calc(60% - 4px)"}}>
+                  <div style={{fontSize:10,color:C.muted,fontFamily:FB,marginBottom:3}}>Item name *</div>
+                  <input value={item.name} onChange={e=>updateItem(item.id,"name",e.target.value)} placeholder="Tailored Midi Skirt"
+                    style={{width:"100%",padding:"8px 10px",borderRadius:8,border:`1px solid ${C.border}`,background:C.bg,fontSize:12,fontFamily:FB,color:C.dark,outline:"none"}}/>
+                </div>
+                <div style={{flex:"1 1 calc(40% - 4px)"}}>
+                  <div style={{fontSize:10,color:C.muted,fontFamily:FB,marginBottom:3}}>Brand</div>
+                  <input value={item.brand} onChange={e=>updateItem(item.id,"brand",e.target.value)} placeholder="Zara"
+                    style={{width:"100%",padding:"8px 10px",borderRadius:8,border:`1px solid ${C.border}`,background:C.bg,fontSize:12,fontFamily:FB,color:C.dark,outline:"none"}}/>
+                </div>
+                <div style={{flex:"1 1 calc(40% - 4px)"}}>
+                  <div style={{fontSize:10,color:C.muted,fontFamily:FB,marginBottom:3}}>Price ($)</div>
+                  <input value={item.price} onChange={e=>updateItem(item.id,"price",e.target.value)} placeholder="99.99" type="number"
+                    style={{width:"100%",padding:"8px 10px",borderRadius:8,border:`1px solid ${C.border}`,background:C.bg,fontSize:12,fontFamily:FB,color:C.dark,outline:"none"}}/>
+                </div>
+                <div style={{flex:"1 1 calc(60% - 4px)"}}>
+                  <div style={{fontSize:10,color:C.muted,fontFamily:FB,marginBottom:3}}>Product link</div>
+                  <input value={item.link} onChange={e=>updateItem(item.id,"link",e.target.value)} placeholder="https://..."
+                    style={{width:"100%",padding:"8px 10px",borderRadius:8,border:`1px solid ${C.border}`,background:C.bg,fontSize:12,fontFamily:FB,color:C.dark,outline:"none"}}/>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {error&&<div style={{fontSize:12,color:C.accent,fontFamily:FB,marginBottom:12,background:C.accentLight,padding:"8px 12px",borderRadius:8}}>{error}</div>}
+      </div>
+
+      <div style={{position:"absolute",bottom:0,left:0,right:0,background:C.bg,borderTop:`1px solid ${C.border}`,padding:"14px 16px 28px"}}>
+        <button onClick={handleSubmit} disabled={loading}
+          style={{width:"100%",padding:14,borderRadius:14,background:C.dark,color:"white",border:"none",fontWeight:700,fontSize:14,fontFamily:FBtn,cursor:"pointer"}}>
+          Post Haul →
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function Nav({screen,set,user}){
   const tabs=[{id:"feed",icon:"▶",label:"Feed"},{id:"snap",icon:"✨",label:"AI Stylist"},{id:"profile",icon:"👤",label:"Profile"}];
   return(
@@ -766,8 +954,9 @@ function App(){
   const [checkout,setCheckout]=useState(null);
   const [user,setUser]=useState(null);
   const [authModal,setAuthModal]=useState(null); // null | "buy" | "post" | "stylist"
+  const [postHaul,setPostHaul]=useState(false);
   const [pendingAction,setPendingAction]=useState(null);
-  const showNav=screen==="feed"||screen==="snap"||screen==="profile";
+  const showNav=(screen==="feed"||screen==="snap"||screen==="profile")&&!postHaul;
 
   useEffect(()=>{
     supabase.auth.getSession().then(({data:{session}})=>{
@@ -803,11 +992,12 @@ function App(){
         <span>9:41</span><span>●●●○ 🔋</span>
       </div>
       <div style={{flex:1,position:"relative",overflow:"hidden"}}>
-        {screen==="feed"&&!haul&&<FeedScreen onOpen={h=>{setHaul(h);}} onSnap={()=>handleNavChange("snap")} onProfile={()=>setScreen("profile")} onAuthRequired={(r,a)=>requireAuth(r,a)}/>}
+        {screen==="feed"&&!haul&&<FeedScreen onOpen={h=>{setHaul(h);}} onSnap={()=>handleNavChange("snap")} onProfile={()=>setScreen("profile")} onAuthRequired={(r,a)=>requireAuth(r,a)} onPostHaul={()=>requireAuth("post",()=>setPostHaul(true))}/>}
         {screen==="feed"&&haul&&!checkout&&<DetailScreen haul={haul} onBack={()=>setHaul(null)} onCheckout={(items,total)=>requireAuth("buy",()=>{setCheckout({items,total});setScreen("checkout");})}/>}
         {screen==="checkout"&&checkout&&<CheckoutScreen items={checkout.items} total={checkout.total} onDone={()=>{setCheckout(null);setHaul(null);setScreen("feed");}}/>}
         {screen==="snap"&&<SnapScreen onBack={()=>setScreen("feed")} onCheckout={(items,total)=>requireAuth("buy",()=>{setCheckout({items,total});setScreen("checkout");})}/>}
-        {screen==="profile"&&<ProfileScreen user={user} onSignOut={async()=>{await supabase.auth.signOut();setUser(null);setScreen("feed");}} onUserUpdate={(u)=>setUser(u)}/>}
+        {screen==="profile"&&<ProfileScreen user={user} onSignOut={async()=>{await supabase.auth.signOut();setUser(null);setScreen("feed");}} onUserUpdate={(u)=>setUser(u)}/> }
+        {postHaul&&<PostHaulScreen user={user} onBack={()=>setPostHaul(false)} onPosted={()=>{setPostHaul(false);setScreen("feed");}}/>}
       </div>
       {showNav&&<Nav screen={screen} set={handleNavChange} user={user}/>}
       {authModal&&<AuthModal reason={authModal} onClose={()=>setAuthModal(null)} onSuccess={handleAuthSuccess}/>}
