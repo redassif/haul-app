@@ -29,30 +29,43 @@ const supabase = window.supabase.createClient(
 const C = {bg:"#FAFAFA",dark:"#141414",card:"#FFFFFF",accent:"#8B2635",accentLight:"#8B263512",muted:"#6B6B6B",border:"#E8E8E8",tag:"#F2F0ED"};
 const FD="'Libre Baskerville',serif", FB="'Libre Baskerville',serif", FBtn="'DM Sans',sans-serif";
 
-const HAULS=[
-  {id:4,creator:"Reda A.",handle:"@redassif",av:"R",avc:"#8B2635",title:"Accessories Haul 💛",views:"1",likes:"1",thumb:"💛",bg:"linear-gradient(135deg,#FFF4D4,#FFE8A0)",items:[
-    {id:101,name:"A Little High Maintenance Anklet",brand:"Fashion Nova",price:10.99,color:"#C9A84C",checked:true,link:"https://www.fashionnova.com/products/a-little-high-maintenance-anklet-gold"},
-    {id:102,name:"Leather Hook Clasp Bracelet",brand:"Shein",price:5.99,color:"#8B4513",checked:true,link:"https://us.shein.com/1pc-10mm-Thick-Versatile-Hook-Clasp-Leather-Bracelet-Women-s-Daily-Jewelry-Gift-p-123208269.html"},
-    {id:103,name:"3pcs Stainless Steel Stackable Bracelets",brand:"Shein",price:6.99,color:"#C9A84C",checked:true,link:"https://us.shein.com/3pcs-Set-Stainless-Steel-Texture-Bracelets-Minimalist-Bangle-Bracelet-For-Women-Elegant-Stackable-Bracelets-For-Daily-Party-Jewelry-Christmas-Gifts-p-44834842.html"},
-  ]},
-  {id:1,creator:"Zara M.",handle:"@zarastyles",av:"Z",avc:"#8B2635",title:"Spring Minimalist Haul ✨",views:"128K",likes:"14.2K",thumb:"🌸",bg:"linear-gradient(135deg,#F9E4D4,#F0D5C8)",items:[
-    {id:1,name:"Linen Oversized Blazer",brand:"Zara",price:89.99,color:"#8B7355",checked:true,link:"https://www.zara.com/us/en/linen-blend-double-breasted-blazer-p08372245.html"},
-    {id:2,name:"Wide Leg Trousers",brand:"Tronjori",price:32.99,color:"#4A4A4A",checked:true,link:"https://www.amazon.com/Tronjori-Women-Casual-Palazzo-Trousers/dp/B07GYXFPB4"},
-    {id:3,name:"Strappy Heeled Sandals",brand:"Allegra K",price:38.99,color:"#C4A882",checked:false,link:"https://www.amazon.com/Allegra-Womens-Strappy-Straps-Sandals/dp/B07LCC6P4Q"},
-    {id:4,name:"Mini Shoulder Bag",brand:"Mango",price:59.99,color:"#1A1A1A",checked:true,link:"https://shop.mango.com/us/en/p/women/bags/crossbody/mini-shopper-style-shoulder-bag_87007174"}
-  ]},
-  {id:2,creator:"Mia Chen",handle:"@miafashion",av:"M",avc:"#2D6A4F",title:"Y2K Comeback Pieces 🌀",views:"89K",likes:"9.8K",thumb:"⭐",bg:"linear-gradient(135deg,#D4E8F9,#C8D5F0)",items:[
-    {id:5,name:"Low Rise Cargo Pants",brand:"Urban Outfitters",price:79.99,color:"#556B2F",checked:true,link:"https://www.urbanoutfitters.com/shop/hybrid/bdg-360-utility-low-rise-straight-leg-pant"},
-    {id:6,name:"Butterfly Crop Top",brand:"Shein",price:19.99,color:"#FF69B4",checked:true,link:"https://www.prettylittlething.us/product/petite-slogan-diamante-graphic-fitted-t-shirt_plt21653?colour=white"},
-    {id:7,name:"Platform Sneakers",brand:"Nike",price:120.00,color:"#F2F2F2",checked:true,link:"https://www.amazon.com/Womens-Sneaker-White-Black-Orange/dp/B0B6FRWL4G?th=1&psc=1"}
-  ]},
-  {id:3,creator:"Leila K.",handle:"@leilaootd",av:"L",avc:"#7B2D8B",title:"Office to Out — Work Fits 💼",views:"204K",likes:"22.1K",thumb:"💼",bg:"linear-gradient(135deg,#E8D4F9,#D8C8F0)",items:[
-    {id:9,name:"Tailored Midi Skirt",brand:"& Other Stories",price:99.99,color:"#2C3E50",checked:true,link:"https://www.stories.com/en-us/product/tailored-pencil-midi-skirt-black-1214238001/"},
-    {id:10,name:"Silk Button Blouse",brand:"Mango",price:69.99,color:"#F5F5DC",checked:true,link:"https://www.mangooutlet.com/us/en/p/women/blouses-and-shirts/long-sleeve/100-silk-shirt_67024789"},
-    {id:11,name:"Block Heel Mules",brand:"Zara",price:79.99,color:"#8B4513",checked:true,link:"https://www.zara.com/us/en/leather-block-heel-mules-limited-edition-p11285710.html"},
-    {id:12,name:"Kelly Green Cargo Pants",brand:"Lime Lush",price:49.00,color:"#2E7D32",checked:true,link:"https://www.limelush.com/products/kelly-green-faux-linen-wide-leg-cargo-pants"}
-  ]}
+// Hauls now loaded from Supabase — no hardcoded data
+const BG_GRADIENTS = [
+  "linear-gradient(135deg,#F9E4D4,#F0D5C8)",
+  "linear-gradient(135deg,#D4E8F9,#C8D5F0)",
+  "linear-gradient(135deg,#E8D4F9,#D8C8F0)",
+  "linear-gradient(135deg,#FFF4D4,#FFE8A0)",
+  "linear-gradient(135deg,#D4F9E8,#C8F0D5)",
+  "linear-gradient(135deg,#F9D4D4,#F0C8C8)",
 ];
+const AV_COLORS = ["#8B2635","#2D6A4F","#7B2D8B","#1A5276","#6E2F1A","#1A3A5C"];
+
+function formatHaulForFeed(haul, items){
+  const initial = (haul.creator_name||"?")[0].toUpperCase();
+  const idx = haul.id.charCodeAt(0) % BG_GRADIENTS.length;
+  return {
+    id: haul.id,
+    creator: haul.creator_name||"Creator",
+    handle: haul.creator_handle||"@user",
+    av: initial,
+    avc: AV_COLORS[idx % AV_COLORS.length],
+    title: haul.title,
+    views: haul.views?.toString()||"0",
+    likes: haul.likes?.toString()||"0",
+    thumb: "🎬",
+    bg: BG_GRADIENTS[idx],
+    video_url: haul.video_url||null,
+    items: (items||[]).map(i=>({
+      id: i.id,
+      name: i.name,
+      brand: i.brand||"",
+      price: i.price||0,
+      color: "#888888",
+      checked: true,
+      link: i.link||null,
+    })),
+  };
+}
 
 function Av({l,c,s=36}){
   return <div style={{width:s,height:s,borderRadius:"50%",background:c||"#E8442C",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:s*0.4,color:"#fff",fontFamily:FB,flexShrink:0,border:"2px solid white",boxShadow:"0 2px 8px rgba(0,0,0,0.15)"}}>{l}</div>;
@@ -146,6 +159,33 @@ function AuthModal({onClose, onSuccess, reason}){
 }
 
 function FeedScreen({onOpen,onSnap,onProfile,onAuthRequired,onPostHaul}){
+  const [hauls,setHauls]=useState([]);
+  const [loading,setLoading]=useState(true);
+
+  useEffect(()=>{
+    const fetchHauls=async()=>{
+      setLoading(true);
+      const{data,error}=await supabase
+        .from("hauls")
+        .select("*, haul_items(*)")
+        .order("created_at",{ascending:false});
+      if(!error&&data){
+        setHauls(data.map(h=>formatHaulForFeed(h, h.haul_items)));
+      }
+      setLoading(false);
+    };
+    fetchHauls();
+  },[]);
+
+  if(loading) return(
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",gap:12}}>
+      <div style={{display:"flex",gap:6}}>
+        {[0,1,2].map(i=><div key={i} style={{width:8,height:8,borderRadius:"50%",background:C.accent,animation:`bounce 0.8s ease-in-out ${i*0.2}s infinite alternate`}}/>)}
+      </div>
+      <div style={{fontSize:12,color:C.muted,fontFamily:FB}}>Loading hauls...</div>
+    </div>
+  );
+
   return(
     <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
       <div style={{padding:"16px 16px 0",flexShrink:0}}>
@@ -156,18 +196,14 @@ function FeedScreen({onOpen,onSnap,onProfile,onAuthRequired,onPostHaul}){
         <div style={{fontSize:11,color:C.muted,fontFamily:FB,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:12}}>Trending Hauls</div>
       </div>
       <div style={{flex:1,overflowY:"auto",padding:"0 16px 100px"}}>
-        {HAULS.map(h=>{
+        {hauls.length===0&&<div style={{textAlign:"center",padding:"40px 0",color:C.muted,fontFamily:FB,fontSize:13}}>No hauls yet. Be the first to post!</div>}
+        {hauls.map(h=>{
           const total=h.items.filter(i=>i.checked).reduce((s,i)=>s+i.price,0);
           return(
             <div key={h.id} onClick={()=>onOpen(h)} style={{background:C.card,borderRadius:20,overflow:"hidden",border:`1px solid ${C.border}`,marginBottom:18,boxShadow:"0 4px 24px rgba(26,18,9,0.06)",cursor:"pointer"}}>
               <div style={{height:190,background:h.bg,display:"flex",alignItems:"center",justifyContent:"center",position:"relative",overflow:"hidden"}}>
-                {h.id===1
-                  ? <><video src="/haul.mp4" style={{width:"100%",height:"100%",objectFit:"cover",position:"absolute",inset:0}} autoPlay muted loop playsInline/>
-                  <div style={{position:"absolute",bottom:8,right:8,width:44,height:20,borderRadius:4,background:"rgba(0,0,0,0.55)"}}/></>
-                  : h.id===2
-                  ? <video src="/y2k.mp4" style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"center top",position:"absolute",inset:0}} autoPlay muted loop playsInline onError={e=>console.log('video error',e)}/>
-                  : h.id===3
-                  ? <video src="/office.mp4" style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"center top",position:"absolute",inset:0}} autoPlay muted loop playsInline/>
+                {h.video_url
+                  ? <video src={h.video_url} style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"center top",position:"absolute",inset:0}} autoPlay muted loop playsInline/>
                   : <div style={{fontSize:60,opacity:0.5}}>{h.thumb}</div>
                 }
                 <div style={{position:"absolute",bottom:10,left:10,right:10,display:"flex",justifyContent:"space-between"}}>
@@ -247,13 +283,8 @@ function DetailScreen({haul,onBack,onCheckout}){
   return(
     <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
       <div style={{height:220,background:haul.bg,position:"relative",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,overflow:"hidden"}}>
-        {haul.id===1
-          ? <><video src="/haul.mp4" style={{width:"100%",height:"100%",objectFit:"cover",position:"absolute",inset:0}} autoPlay muted loop playsInline/>
-          <div style={{position:"absolute",bottom:8,right:8,width:44,height:20,borderRadius:4,background:"rgba(0,0,0,0.55)"}}/></>
-          : haul.id===2
-          ? <video src="/y2k.mp4" style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"center top",position:"absolute",inset:0}} autoPlay muted loop playsInline/>
-          : haul.id===3
-          ? <video src="/office.mp4" style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"center top",position:"absolute",inset:0}} autoPlay muted loop playsInline/>
+        {haul.video_url
+          ? <video src={haul.video_url} style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"center top",position:"absolute",inset:0}} autoPlay muted loop playsInline/>
           : <div style={{fontSize:64,opacity:0.4}}>{haul.thumb}</div>
         }
         <button onClick={onBack} style={{position:"absolute",top:16,left:16,width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,0.9)",border:"none",fontSize:16,cursor:"pointer"}}>←</button>
@@ -318,7 +349,9 @@ function SnapScreen({onBack, onCheckout}){
   const scrollRef=React.useRef();
   const inputRef=React.useRef();
 
-  const CATALOG=HAULS.flatMap(h=>h.items.map(item=>({
+  const [snapHauls,setSnapHauls]=useState([]);
+  useEffect(()=>{supabase.from("hauls").select("*, haul_items(*)").then(({data})=>{if(data)setSnapHauls(data.map(h=>formatHaulForFeed(h,h.haul_items)));});},[]);
+  const CATALOG=snapHauls.flatMap(h=>h.items.map(item=>({
     ...item,
     creator:h.creator,
     handle:h.handle,
