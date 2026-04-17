@@ -835,7 +835,7 @@ function PostHaulScreen({user, onBack, onPosted}){
         .single();
       if(haulError) throw haulError;
 
-      // 4. Insert items
+      // 4. Insert items with user-provided prices first
       const itemRows=validItems.map(i=>({
         haul_id: haul.id,
         name: i.name.trim(),
@@ -843,8 +843,39 @@ function PostHaulScreen({user, onBack, onPosted}){
         price: parseFloat(i.price)||0,
         link: i.link.trim(),
       }));
-      const{error:itemsError}=await supabase.from("haul_items").insert(itemRows);
+      const{data:insertedItems,error:itemsError}=await supabase
+        .from("haul_items")
+        .insert(itemRows)
+        .select();
       if(itemsError) throw itemsError;
+
+      // 5. Fetch real prices from Rye API for items with links and update DB
+      const itemsWithLinks=(insertedItems||[]).filter(i=>i.link);
+      if(itemsWithLinks.length>0){
+        try{
+          const resp=await fetch("/api/product",{
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({urls:itemsWithLinks.map(i=>({id:i.id,url:i.link}))})
+          });
+          const data=await resp.json();
+          if(data.products){
+            // Update each item in DB with real price/name/brand from Rye
+            await Promise.all(
+              data.products
+                .filter(p=>p.success)
+                .map(p=>supabase.from("haul_items").update({
+                  price: p.price||undefined,
+                  name: p.name||undefined,
+                  brand: p.brand||undefined,
+                }).eq("id",p.id))
+            );
+          }
+        }catch(e){
+          // Price fetch failed — keep user-entered prices, don't block posting
+          console.warn("Price lookup failed:", e.message);
+        }
+      }
 
       setStage("done");
     }catch(err){
@@ -867,7 +898,7 @@ function PostHaulScreen({user, onBack, onPosted}){
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",padding:32,textAlign:"center"}}>
       <div style={{fontSize:56,marginBottom:16}}>📤</div>
       <div style={{fontSize:20,fontWeight:700,fontStyle:"italic",color:C.dark,fontFamily:FD,marginBottom:8}}>Uploading your haul...</div>
-      <div style={{fontSize:13,color:C.muted,fontFamily:FB,marginBottom:20}}>This may take a moment.</div>
+      <div style={{fontSize:13,color:C.muted,fontFamily:FB,marginBottom:20}}>Uploading video and verifying prices...</div>
       <div style={{display:"flex",gap:6}}>
         {[0,1,2].map(i=><div key={i} style={{width:8,height:8,borderRadius:"50%",background:C.accent,animation:`bounce 0.8s ease-in-out ${i*0.2}s infinite alternate`}}/>)}
       </div>
