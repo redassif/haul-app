@@ -835,7 +835,7 @@ function PostHaulScreen({user, onBack, onPosted}){
         .single();
       if(haulError) throw haulError;
 
-      // 4. Insert items with user-provided prices first
+      // 4. Insert items — server-side product.js will handle real price lookup & DB update
       const itemRows=validItems.map(i=>({
         haul_id: haul.id,
         name: i.name.trim(),
@@ -849,32 +849,14 @@ function PostHaulScreen({user, onBack, onPosted}){
         .select();
       if(itemsError) throw itemsError;
 
-      // 5. Fetch real prices from Rye API for items with links and update DB
+      // 5. Fire & forget — product.js fetches real prices and writes to DB server-side
       const itemsWithLinks=(insertedItems||[]).filter(i=>i.link);
       if(itemsWithLinks.length>0){
-        try{
-          const resp=await fetch("/api/product",{
-            method:"POST",
-            headers:{"Content-Type":"application/json"},
-            body:JSON.stringify({urls:itemsWithLinks.map(i=>({id:i.id,url:i.link}))})
-          });
-          const data=await resp.json();
-          if(data.products){
-            // Update each item in DB with real price/name/brand from Rye
-            await Promise.all(
-              data.products
-                .filter(p=>p.success)
-                .map(p=>supabase.from("haul_items").update({
-                  price: p.price||undefined,
-                  name: p.name||undefined,
-                  brand: p.brand||undefined,
-                }).eq("id",p.id))
-            );
-          }
-        }catch(e){
-          // Price fetch failed — keep user-entered prices, don't block posting
-          console.warn("Price lookup failed:", e.message);
-        }
+        fetch("/api/product",{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({urls:itemsWithLinks.map(i=>({id:i.id,url:i.link}))})
+        }).catch(e=>console.warn("Price lookup failed:",e.message));
       }
 
       setStage("done");
