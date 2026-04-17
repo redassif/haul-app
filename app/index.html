@@ -992,8 +992,8 @@ function App(){
         <span>9:41</span><span>●●●○ 🔋</span>
       </div>
       <div style={{flex:1,position:"relative",overflow:"hidden"}}>
-        {screen==="feed"&&!haul&&<FeedScreen onOpen={h=>{setHaul(h);}} onSnap={()=>handleNavChange("snap")} onProfile={()=>setScreen("profile")} onAuthRequired={(r,a)=>requireAuth(r,a)} onPostHaul={()=>requireAuth("post",()=>setPostHaul(true))}/>}
-        {screen==="feed"&&haul&&!checkout&&<DetailScreen haul={haul} onBack={()=>setHaul(null)} onCheckout={(items,total)=>requireAuth("buy",()=>{setCheckout({items,total});setScreen("checkout");})}/>}
+        {screen==="feed"&&!haul&&!postHaul&&<FeedScreen onOpen={h=>{setHaul(h);}} onSnap={()=>handleNavChange("snap")} onProfile={()=>setScreen("profile")} onAuthRequired={(r,a)=>requireAuth(r,a)} onPostHaul={()=>requireAuth("post",()=>setPostHaul(true))}/>}
+        {screen==="feed"&&haul&&!checkout&&!postHaul&&<DetailScreen haul={haul} onBack={()=>setHaul(null)} onCheckout={(items,total)=>requireAuth("buy",()=>{setCheckout({items,total});setScreen("checkout");})}/>}
         {screen==="checkout"&&checkout&&<CheckoutScreen items={checkout.items} total={checkout.total} onDone={()=>{setCheckout(null);setHaul(null);setScreen("feed");}}/>}
         {screen==="snap"&&<SnapScreen onBack={()=>setScreen("feed")} onCheckout={(items,total)=>requireAuth("buy",()=>{setCheckout({items,total});setScreen("checkout");})}/>}
         {screen==="profile"&&<ProfileScreen user={user} onSignOut={async()=>{await supabase.auth.signOut();setUser(null);setScreen("feed");}} onUserUpdate={(u)=>setUser(u)}/> }
