@@ -341,6 +341,51 @@ function DetailScreen({haul,onBack,onCheckout}){
   );
 }
 
+function FitOnboarding({onSave, onSkip}){
+  const [height,setHeight]=useState("");
+  const [usualSize,setUsualSize]=useState("");
+  const [build,setBuild]=useState("");
+  const [saving,setSaving]=useState(false);
+
+  const canSave = height && usualSize && build && !saving;
+
+  const save=async()=>{
+    setSaving(true);
+    const {data:{user}} = await supabase.auth.getUser();
+    if(!user){ setSaving(false); return; }
+    const profile={user_id:user.id, height_cm:parseInt(height,10), usual_size:usualSize, build};
+    const {error} = await supabase.from("user_profiles").upsert(profile,{onConflict:"user_id"});
+    setSaving(false);
+    if(!error) onSave(profile);
+  };
+
+  const fieldStyle={width:"100%",padding:"12px 14px",borderRadius:10,border:`1px solid ${C.border}`,fontSize:14,marginBottom:10,background:C.bg,fontFamily:FB,boxSizing:"border-box"};
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(20,20,20,0.55)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:1000}}>
+      <div style={{background:C.card,borderRadius:"20px 20px 0 0",padding:24,maxWidth:420,width:"100%",boxShadow:"0 -8px 24px rgba(0,0,0,0.1)"}}>
+        <div style={{fontSize:22,fontFamily:FD,fontWeight:700,marginBottom:4,color:C.dark}}>Set up your fit</div>
+        <div style={{fontSize:13,color:C.muted,fontFamily:FB,marginBottom:18}}>30 seconds. We'll personalize every recommendation so you know how it'll actually fit you — not the creator.</div>
+        <input type="number" placeholder="Height (cm)" value={height} onChange={e=>setHeight(e.target.value)} style={fieldStyle}/>
+        <select value={usualSize} onChange={e=>setUsualSize(e.target.value)} style={fieldStyle}>
+          <option value="">Usual size</option>
+          {["XXS","XS","S","M","L","XL","XXL"].map(s=><option key={s} value={s}>{s}</option>)}
+        </select>
+        <select value={build} onChange={e=>setBuild(e.target.value)} style={fieldStyle}>
+          <option value="">Build</option>
+          <option value="slim">Slim</option>
+          <option value="mid">Mid</option>
+          <option value="curvy">Curvy</option>
+        </select>
+        <button onClick={save} disabled={!canSave} style={{width:"100%",padding:14,borderRadius:10,background:canSave?C.accent:C.border,color:"white",border:"none",fontSize:15,fontWeight:600,fontFamily:FBtn,cursor:canSave?"pointer":"not-allowed",marginTop:4}}>
+          {saving?"Saving…":"Save & personalize"}
+        </button>
+        <button onClick={onSkip} style={{width:"100%",padding:10,marginTop:6,background:"transparent",border:"none",color:C.muted,fontSize:13,fontFamily:FB,cursor:"pointer"}}>Skip for now</button>
+      </div>
+    </div>
+  );
+}
+
 function SnapScreen({onBack, onCheckout}){
   const [messages,setMessages]=useState([{role:"ai",text:"Hey! 👋 I'm your personal shopping assistant. Tell me what you're looking for and I'll find it from our creator hauls.\n\nTry something like:\n• \"I want a blazer under $100\"\n• \"Show me something Zara M. wore\"\n• \"Find me Y2K pieces\"",items:[]}]);
   const [input,setInput]=useState("");
@@ -350,7 +395,23 @@ function SnapScreen({onBack, onCheckout}){
   const inputRef=React.useRef();
 
   const [snapHauls,setSnapHauls]=useState([]);
+  const [userProfile,setUserProfile]=useState(null);
+  const [showFitOnboarding,setShowFitOnboarding]=useState(false);
+
   useEffect(()=>{supabase.from("hauls").select("*, haul_items(*)").then(({data})=>{if(data)setSnapHauls(data.map(h=>formatHaulForFeed(h,h.haul_items)));});},[]);
+
+  useEffect(()=>{
+    (async()=>{
+      const {data:{user}} = await supabase.auth.getUser();
+      if(!user) return;
+      const {data} = await supabase.from("user_profiles").select("*").eq("user_id",user.id).maybeSingle();
+      if(data && data.height_cm){
+        setUserProfile(data);
+      } else {
+        setShowFitOnboarding(true);
+      }
+    })();
+  },[]);
   const CATALOG=snapHauls.flatMap(h=>h.items.map(item=>({
     ...item,
     creator:h.creator,
@@ -378,7 +439,7 @@ function SnapScreen({onBack, onCheckout}){
       const resp=await fetch("/api/chat",{
         method:"POST",
         headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({message:msg,history:history.slice(-6),catalog:CATALOG})
+        body:JSON.stringify({message:msg,history:history.slice(-6),catalog:CATALOG,userProfile})
       });
       const data=await resp.json();
       if(!resp.ok) throw new Error(data.error||"Failed");
@@ -438,19 +499,26 @@ function SnapScreen({onBack, onCheckout}){
             {msg.items&&msg.items.length>0&&(
               <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:8}}>
                 {msg.items.map((item,ii)=>(
-                  <div key={ii} style={{background:C.card,border:`1.5px solid ${isInCart(item.id)?C.accent:C.border}`,borderRadius:14,padding:12,display:"flex",alignItems:"center",gap:10,boxShadow:"0 2px 8px rgba(26,18,9,0.04)"}}>
-                    <div style={{width:48,height:48,borderRadius:10,background:item.color||"#eee",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>👗</div>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontWeight:700,fontSize:13,color:C.dark,fontFamily:FB,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{item.name}</div>
-                      <div style={{fontSize:11,color:C.muted,fontFamily:FB}}>{item.brand} · {item.creator}</div>
-                      <div style={{fontSize:10,color:C.accent,fontFamily:FB,marginTop:2}}>from {item.haul}</div>
+                  <div key={ii} style={{background:C.card,border:`1.5px solid ${isInCart(item.id)?C.accent:C.border}`,borderRadius:14,padding:12,display:"flex",flexDirection:"column",gap:8,boxShadow:"0 2px 8px rgba(26,18,9,0.04)"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                      <div style={{width:48,height:48,borderRadius:10,background:item.color||"#eee",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>👗</div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontWeight:700,fontSize:13,color:C.dark,fontFamily:FB,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{item.name}</div>
+                        <div style={{fontSize:11,color:C.muted,fontFamily:FB}}>{item.brand} · {item.creator}</div>
+                        <div style={{fontSize:10,color:C.accent,fontFamily:FB,marginTop:2}}>from {item.haul}</div>
+                      </div>
+                      <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6,flexShrink:0}}>
+                        <div style={{fontWeight:800,fontSize:14,color:C.dark,fontFamily:FB}}>${item.price?.toFixed(2)}</div>
+                        <button onClick={()=>toggleCart(item)} style={{padding:"5px 10px",borderRadius:20,background:isInCart(item.id)?C.accent:C.tag,color:isInCart(item.id)?"white":C.dark,border:"none",fontSize:11,fontWeight:700,fontFamily:FB,cursor:"pointer",whiteSpace:"nowrap"}}>
+                          {isInCart(item.id)?"✓ Added":"+ Add"}
+                        </button>
+                      </div>
                     </div>
-                    <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6,flexShrink:0}}>
-                      <div style={{fontWeight:800,fontSize:14,color:C.dark,fontFamily:FB}}>${item.price?.toFixed(2)}</div>
-                      <button onClick={()=>toggleCart(item)} style={{padding:"5px 10px",borderRadius:20,background:isInCart(item.id)?C.accent:C.tag,color:isInCart(item.id)?"white":C.dark,border:"none",fontSize:11,fontWeight:700,fontFamily:FB,cursor:"pointer",whiteSpace:"nowrap"}}>
-                        {isInCart(item.id)?"✓ Added":"+ Add"}
-                      </button>
-                    </div>
+                    {item.fit_note && (
+                      <div style={{padding:"8px 10px",background:C.accentLight,borderLeft:`2px solid ${C.accent}`,borderRadius:4,fontSize:11,lineHeight:1.4,color:C.dark,fontFamily:FB}}>
+                        <span style={{fontWeight:700,marginRight:4}}>Fit</span>{item.fit_note}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -495,6 +563,13 @@ function SnapScreen({onBack, onCheckout}){
           </button>
         </div>
       </div>
+
+      {showFitOnboarding && (
+        <FitOnboarding
+          onSave={(profile)=>{setUserProfile(profile); setShowFitOnboarding(false);}}
+          onSkip={()=>setShowFitOnboarding(false)}
+        />
+      )}
     </div>
   );
 }
