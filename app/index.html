@@ -40,11 +40,12 @@ const BG_GRADIENTS = [
 ];
 const AV_COLORS = ["#8B2635","#2D6A4F","#7B2D8B","#1A5276","#6E2F1A","#1A3A5C"];
 
-function formatHaulForFeed(haul, items){
+function formatHaulForFeed(haul, items, creatorProfile){
   const initial = (haul.creator_name||"?")[0].toUpperCase();
   const idx = haul.id.charCodeAt(0) % BG_GRADIENTS.length;
   return {
     id: haul.id,
+    creator_id: haul.creator_id,
     creator: haul.creator_name||"Creator",
     handle: haul.creator_handle||"@user",
     av: initial,
@@ -55,6 +56,10 @@ function formatHaulForFeed(haul, items){
     thumb: "🎬",
     bg: BG_GRADIENTS[idx],
     video_url: haul.video_url||null,
+    verified: creatorProfile?.verified===true,
+    creator_height_cm: creatorProfile?.height_cm||null,
+    creator_build: creatorProfile?.build||null,
+    creator_usual_size: creatorProfile?.usual_size||null,
     items: (items||[]).map(i=>({
       id: i.id,
       name: i.name,
@@ -63,8 +68,22 @@ function formatHaulForFeed(haul, items){
       color: "#888888",
       checked: true,
       link: i.link||null,
+      category: i.category||null,
+      fit_style: i.fit_style||null,
+      length_on_creator: i.length_on_creator||null,
     })),
   };
+}
+
+// Hauls and creator_profiles share creator_id (both FK to auth.users.id)
+// but there's no direct FK between them, so we can't do a Supabase nested
+// select. Fetch profiles separately and join in JS.
+async function enrichHaulsWithCreatorProfiles(hauls){
+  const ids = [...new Set(hauls.map(h=>h.creator_id).filter(Boolean))];
+  if(ids.length===0) return hauls.map(h=>({...h, _creatorProfile:null}));
+  const {data} = await supabase.from("creator_profiles").select("*").in("creator_id", ids);
+  const byId = new Map((data||[]).map(p=>[p.creator_id, p]));
+  return hauls.map(h=>({...h, _creatorProfile: byId.get(h.creator_id)||null}));
 }
 
 function Av({l,c,s=36}){
@@ -170,7 +189,8 @@ function FeedScreen({onOpen,onSnap,onProfile,onAuthRequired,onPostHaul}){
         .select("*, haul_items(*)")
         .order("created_at",{ascending:false});
       if(!error&&data){
-        setHauls(data.map(h=>formatHaulForFeed(h, h.haul_items)));
+        const enriched = await enrichHaulsWithCreatorProfiles(data);
+        setHauls(enriched.map(h=>formatHaulForFeed(h, h.haul_items, h._creatorProfile)));
       }
       setLoading(false);
     };
@@ -210,7 +230,7 @@ function FeedScreen({onOpen,onSnap,onProfile,onAuthRequired,onPostHaul}){
                   <span style={{fontSize:11,color:"white",fontFamily:FB,fontWeight:600,background:"rgba(0,0,0,0.4)",padding:"3px 8px",borderRadius:20}}>▶ {h.views}</span>
                   <span style={{fontSize:11,color:"white",fontFamily:FB,fontWeight:600,background:"rgba(0,0,0,0.4)",padding:"3px 8px",borderRadius:20}}>♥ {h.likes}</span>
                 </div>
-                <div style={{position:"absolute",top:10,right:10,background:C.accent,borderRadius:20,padding:"3px 10px",fontSize:11,color:"white",fontFamily:FB,fontWeight:700}}>✓ Verified</div>
+                {h.verified&&<div style={{position:"absolute",top:10,right:10,background:C.accent,borderRadius:20,padding:"3px 10px",fontSize:11,color:"white",fontFamily:FB,fontWeight:700}}>✓ Verified</div>}
               </div>
               <div style={{padding:14}}>
                 <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
@@ -288,7 +308,7 @@ function DetailScreen({haul,onBack,onCheckout}){
           : <div style={{fontSize:64,opacity:0.4}}>{haul.thumb}</div>
         }
         <button onClick={onBack} style={{position:"absolute",top:16,left:16,width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,0.9)",border:"none",fontSize:16,cursor:"pointer"}}>←</button>
-        <div style={{position:"absolute",top:16,right:16,background:C.accent,borderRadius:20,padding:"3px 10px",fontSize:11,color:"white",fontFamily:FB,fontWeight:700}}>✓ Verified</div>
+        {haul.verified&&<div style={{position:"absolute",top:16,right:16,background:C.accent,borderRadius:20,padding:"3px 10px",fontSize:11,color:"white",fontFamily:FB,fontWeight:700}}>✓ Verified</div>}
       </div>
       <div style={{flex:1,overflowY:"auto",padding:"14px 16px 140px"}}>
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
@@ -386,6 +406,71 @@ function FitOnboarding({onSave, onSkip}){
   );
 }
 
+// Shown once per creator, the first time they tap "+ Post Haul" without
+// a creator_profiles row. Not skippable — without these fields the fit
+// intelligence for every haul they post will be null forever.
+function CreatorOnboarding({user, onSave, onCancel}){
+  const defaultName = user.user_metadata?.full_name || user.email.split("@")[0];
+  const defaultHandle = "@" + user.email.split("@")[0];
+  const [name,setName]=useState(defaultName);
+  const [handle,setHandle]=useState(defaultHandle);
+  const [height,setHeight]=useState("");
+  const [usualSize,setUsualSize]=useState("");
+  const [build,setBuild]=useState("");
+  const [saving,setSaving]=useState(false);
+  const [error,setError]=useState(null);
+
+  const canSave = name.trim() && handle.trim() && height && usualSize && build && !saving;
+
+  const save=async()=>{
+    setSaving(true);
+    setError(null);
+    const profile={
+      creator_id: user.id,
+      name: name.trim(),
+      handle: handle.trim().startsWith("@") ? handle.trim() : "@"+handle.trim(),
+      height_cm: parseInt(height,10),
+      usual_size: usualSize,
+      build,
+      verified: false,
+    };
+    const {error} = await supabase.from("creator_profiles").upsert(profile,{onConflict:"creator_id"});
+    setSaving(false);
+    if(error){ setError(error.message); return; }
+    onSave(profile);
+  };
+
+  const fieldStyle={width:"100%",padding:"12px 14px",borderRadius:10,border:`1px solid ${C.border}`,fontSize:14,marginBottom:10,background:C.bg,fontFamily:FB,boxSizing:"border-box"};
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(20,20,20,0.55)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:1000}}>
+      <div style={{background:C.card,borderRadius:"20px 20px 0 0",padding:24,maxWidth:420,width:"100%",boxShadow:"0 -8px 24px rgba(0,0,0,0.1)",maxHeight:"90vh",overflowY:"auto"}}>
+        <div style={{fontSize:11,color:C.accent,fontFamily:FB,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>One-time setup</div>
+        <div style={{fontSize:22,fontFamily:FD,fontWeight:700,marginBottom:4,color:C.dark}}>Set up your creator profile</div>
+        <div style={{fontSize:13,color:C.muted,fontFamily:FB,marginBottom:18,lineHeight:1.5}}>Your body details power fit intelligence — shoppers see how each piece will fit <em>them</em>, not you.</div>
+        <input placeholder="Display name" value={name} onChange={e=>setName(e.target.value)} style={fieldStyle}/>
+        <input placeholder="Handle (@yourname)" value={handle} onChange={e=>setHandle(e.target.value)} style={fieldStyle}/>
+        <input type="number" placeholder="Height (cm)" value={height} onChange={e=>setHeight(e.target.value)} style={fieldStyle}/>
+        <select value={usualSize} onChange={e=>setUsualSize(e.target.value)} style={fieldStyle}>
+          <option value="">Usual size</option>
+          {["XXS","XS","S","M","L","XL","XXL"].map(s=><option key={s} value={s}>{s}</option>)}
+        </select>
+        <select value={build} onChange={e=>setBuild(e.target.value)} style={fieldStyle}>
+          <option value="">Build</option>
+          <option value="slim">Slim</option>
+          <option value="mid">Mid</option>
+          <option value="curvy">Curvy</option>
+        </select>
+        {error&&<div style={{fontSize:12,color:C.accent,fontFamily:FB,marginBottom:10,background:C.accentLight,padding:"8px 12px",borderRadius:8}}>{error}</div>}
+        <button onClick={save} disabled={!canSave} style={{width:"100%",padding:14,borderRadius:10,background:canSave?C.accent:C.border,color:"white",border:"none",fontSize:15,fontWeight:600,fontFamily:FBtn,cursor:canSave?"pointer":"not-allowed",marginTop:4}}>
+          {saving?"Saving…":"Save & continue"}
+        </button>
+        <button onClick={onCancel} style={{width:"100%",padding:10,marginTop:6,background:"transparent",border:"none",color:C.muted,fontSize:13,fontFamily:FB,cursor:"pointer"}}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
 function SnapScreen({onBack, onCheckout}){
   const [messages,setMessages]=useState([{role:"ai",text:"Hey! 👋 I'm your personal shopping assistant. Tell me what you're looking for and I'll find it from our creator hauls.\n\nTry something like:\n• \"I want a blazer under $100\"\n• \"Show me something Zara M. wore\"\n• \"Find me Y2K pieces\"",items:[]}]);
   const [input,setInput]=useState("");
@@ -398,7 +483,14 @@ function SnapScreen({onBack, onCheckout}){
   const [userProfile,setUserProfile]=useState(null);
   const [showFitOnboarding,setShowFitOnboarding]=useState(false);
 
-  useEffect(()=>{supabase.from("hauls").select("*, haul_items(*)").then(({data})=>{if(data)setSnapHauls(data.map(h=>formatHaulForFeed(h,h.haul_items)));});},[]);
+  useEffect(()=>{
+    (async()=>{
+      const {data} = await supabase.from("hauls").select("*, haul_items(*)");
+      if(!data) return;
+      const enriched = await enrichHaulsWithCreatorProfiles(data);
+      setSnapHauls(enriched.map(h=>formatHaulForFeed(h, h.haul_items, h._creatorProfile)));
+    })();
+  },[]);
 
   useEffect(()=>{
     (async()=>{
@@ -412,12 +504,17 @@ function SnapScreen({onBack, onCheckout}){
       }
     })();
   },[]);
+  // Flatten creator body onto each item so api/chat.js can read it directly
+  // and analyzeFit() works without schema awareness.
   const CATALOG=snapHauls.flatMap(h=>h.items.map(item=>({
     ...item,
     creator:h.creator,
     handle:h.handle,
     haul:h.title,
     haulId:h.id,
+    creator_height_cm: h.creator_height_cm,
+    creator_build: h.creator_build,
+    creator_usual_size: h.creator_usual_size,
   })));
 
   React.useEffect(()=>{
@@ -854,12 +951,28 @@ function PostHaulScreen({user, onBack, onPosted}){
   const [title,setTitle]=useState("");
   const [videoFile,setVideoFile]=useState(null);
   const [videoPreview,setVideoPreview]=useState(null);
-  const [items,setItems]=useState([{id:Date.now(),name:"",link:"",price:"",brand:""}]);
+  const newItem=()=>({id:Date.now(),name:"",link:"",price:"",brand:"",category:"",fit_style:"",length_on_creator:""});
+  const [items,setItems]=useState([newItem()]);
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState(null);
   const [stage,setStage]=useState("form"); // form | uploading | done
 
-  const addItem=()=>setItems(prev=>[...prev,{id:Date.now(),name:"",link:"",price:"",brand:""}]);
+  const [creatorProfile,setCreatorProfile]=useState(null);
+  const [profileLoading,setProfileLoading]=useState(true);
+
+  useEffect(()=>{
+    (async()=>{
+      const {data} = await supabase
+        .from("creator_profiles")
+        .select("*")
+        .eq("creator_id", user.id)
+        .maybeSingle();
+      setCreatorProfile(data||null);
+      setProfileLoading(false);
+    })();
+  },[user.id]);
+
+  const addItem=()=>setItems(prev=>[...prev,newItem()]);
   const removeItem=(id)=>setItems(prev=>prev.filter(i=>i.id!==id));
   const updateItem=(id,field,val)=>setItems(prev=>prev.map(i=>i.id===id?{...i,[field]:val}:i));
 
@@ -894,13 +1007,15 @@ function PostHaulScreen({user, onBack, onPosted}){
         .from("haul-videos")
         .getPublicUrl(path);
 
-      // 3. Insert haul record
+      // 3. Insert haul record. creator_name/handle are denormalized snapshots
+      // at post time — pulled from the creator's profile so renames on the
+      // profile don't retroactively rewrite old hauls.
       const{data:haul,error:haulError}=await supabase
         .from("hauls")
         .insert({
           creator_id: user.id,
-          creator_name: user.user_metadata?.full_name||user.email,
-          creator_handle: "@"+user.email.split("@")[0],
+          creator_name: creatorProfile.name,
+          creator_handle: creatorProfile.handle,
           title: title.trim(),
           video_url: publicUrl,
           views: 0,
@@ -910,13 +1025,17 @@ function PostHaulScreen({user, onBack, onPosted}){
         .single();
       if(haulError) throw haulError;
 
-      // 4. Insert items — server-side product.js will handle real price lookup & DB update
+      // 4. Insert items with fit tags. category/fit_style/length_on_creator
+      // feed the deterministic fit projection in src/lib/fit.js.
       const itemRows=validItems.map(i=>({
         haul_id: haul.id,
         name: i.name.trim(),
         brand: i.brand.trim(),
         price: parseFloat(i.price)||0,
         link: i.link.trim(),
+        category: i.category||null,
+        fit_style: i.fit_style||null,
+        length_on_creator: i.length_on_creator||null,
       }));
       const{data:insertedItems,error:itemsError}=await supabase
         .from("haul_items")
@@ -941,6 +1060,22 @@ function PostHaulScreen({user, onBack, onPosted}){
     }
     setLoading(false);
   };
+
+  if(profileLoading) return(
+    <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100%"}}>
+      <div style={{display:"flex",gap:6}}>
+        {[0,1,2].map(i=><div key={i} style={{width:8,height:8,borderRadius:"50%",background:C.accent,animation:`bounce 0.8s ease-in-out ${i*0.2}s infinite alternate`}}/>)}
+      </div>
+    </div>
+  );
+
+  if(!creatorProfile) return(
+    <CreatorOnboarding
+      user={user}
+      onSave={(p)=>setCreatorProfile(p)}
+      onCancel={onBack}
+    />
+  );
 
   if(stage==="done") return(
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",padding:32,textAlign:"center"}}>
@@ -1032,6 +1167,49 @@ function PostHaulScreen({user, onBack, onPosted}){
                   <input value={item.link} onChange={e=>updateItem(item.id,"link",e.target.value)} placeholder="https://..."
                     style={{width:"100%",padding:"8px 10px",borderRadius:8,border:`1px solid ${C.border}`,background:C.bg,fontSize:12,fontFamily:FB,color:C.dark,outline:"none"}}/>
                 </div>
+                <div style={{flex:"1 1 100%",marginTop:4,fontSize:10,color:C.muted,fontFamily:FB,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Fit tags</div>
+                <div style={{flex:"1 1 calc(33% - 6px)"}}>
+                  <div style={{fontSize:10,color:C.muted,fontFamily:FB,marginBottom:3}}>Category</div>
+                  <select value={item.category} onChange={e=>updateItem(item.id,"category",e.target.value)}
+                    style={{width:"100%",padding:"8px 10px",borderRadius:8,border:`1px solid ${C.border}`,background:C.bg,fontSize:12,fontFamily:FB,color:C.dark,outline:"none"}}>
+                    <option value="">—</option>
+                    <option value="top">Top</option>
+                    <option value="bottom">Bottom</option>
+                    <option value="dress">Dress</option>
+                    <option value="outerwear">Outerwear</option>
+                    <option value="shoes">Shoes</option>
+                    <option value="accessory">Accessory</option>
+                  </select>
+                </div>
+                {item.category && !["shoes","accessory"].includes(item.category) && (
+                  <div style={{flex:"1 1 calc(33% - 6px)"}}>
+                    <div style={{fontSize:10,color:C.muted,fontFamily:FB,marginBottom:3}}>Fit</div>
+                    <select value={item.fit_style} onChange={e=>updateItem(item.id,"fit_style",e.target.value)}
+                      style={{width:"100%",padding:"8px 10px",borderRadius:8,border:`1px solid ${C.border}`,background:C.bg,fontSize:12,fontFamily:FB,color:C.dark,outline:"none"}}>
+                      <option value="">—</option>
+                      <option value="slim">Slim</option>
+                      <option value="regular">Regular</option>
+                      <option value="relaxed">Relaxed</option>
+                      <option value="oversized">Oversized</option>
+                    </select>
+                  </div>
+                )}
+                {item.category && !["shoes","accessory","bottom"].includes(item.category) && (
+                  <div style={{flex:"1 1 calc(33% - 6px)"}}>
+                    <div style={{fontSize:10,color:C.muted,fontFamily:FB,marginBottom:3}}>Length on you</div>
+                    <select value={item.length_on_creator} onChange={e=>updateItem(item.id,"length_on_creator",e.target.value)}
+                      style={{width:"100%",padding:"8px 10px",borderRadius:8,border:`1px solid ${C.border}`,background:C.bg,fontSize:12,fontFamily:FB,color:C.dark,outline:"none"}}>
+                      <option value="">—</option>
+                      <option value="crop">Crop</option>
+                      <option value="waist">Waist</option>
+                      <option value="hip">Hip</option>
+                      <option value="mid_thigh">Mid-thigh</option>
+                      <option value="knee">Knee</option>
+                      <option value="midi">Midi</option>
+                      <option value="maxi">Maxi</option>
+                    </select>
+                  </div>
+                )}
               </div>
             </div>
           ))}
