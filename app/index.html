@@ -40,6 +40,65 @@ const BG_GRADIENTS = [
 ];
 const AV_COLORS = ["#8B2635","#2D6A4F","#7B2D8B","#1A5276","#6E2F1A","#1A3A5C"];
 
+// --- Fit intelligence ---
+// Mirrors src/lib/fit.js. Inlined because this file uses in-browser Babel
+// and can't ESM-import. Keep in sync with the server-side module.
+const FIT_LENGTH_CATS = ['crop','waist','hip','mid_thigh','knee','midi','maxi'];
+const FIT_LENGTH_LABELS = {crop:'crop',waist:'waist',hip:'hip',mid_thigh:'mid-thigh',knee:'knee',midi:'midi',maxi:'ankle'};
+const FIT_STYLES = ['slim','regular','relaxed','oversized'];
+const FIT_SIZES = ['XXS','XS','S','M','L','XL','XXL'];
+const FIT_BUILDS = ['slim','mid','curvy'];
+const FIT_LEN_EXCLUDED = new Set(['shoes','accessory','bottom']);
+const FIT_STYLE_EXCLUDED = new Set(['shoes','accessory']);
+const _fitIdx=(a,v)=>{const i=a.indexOf(v);return i>=0?i:null;};
+const _fitClamp=(i,a,b)=>Math.max(a,Math.min(b,i));
+
+function analyzeFit({creator={},user={},item={}}={}){
+  const out={length:null,fit_style:null,size:null,flags:[]};
+  if(item.length_on_creator && !FIT_LEN_EXCLUDED.has(item.category)){
+    const i=_fitIdx(FIT_LENGTH_CATS,item.length_on_creator);
+    if(i!==null && creator.height_cm && user.height_cm){
+      const diff=creator.height_cm-user.height_cm, shift=Math.round(diff/10);
+      const newIdx=_fitClamp(i+shift,0,FIT_LENGTH_CATS.length-1);
+      out.length={on_creator:item.length_on_creator,on_user:FIT_LENGTH_CATS[newIdx],shift_steps:shift,height_diff_cm:diff};
+      if(Math.abs(shift)>=2) out.flags.push({kind:'length_mismatch',message:`Length shifts ${Math.abs(shift)} categories ${shift>0?'longer':'shorter'} on you.`});
+    }
+  }
+  if(item.fit_style && creator.build && user.build && !FIT_STYLE_EXCLUDED.has(item.category)){
+    const cb=_fitIdx(FIT_BUILDS,creator.build), ub=_fitIdx(FIT_BUILDS,user.build), si=_fitIdx(FIT_STYLES,item.fit_style);
+    if(cb!==null && ub!==null && si!==null){
+      const bd=ub-cb, adj=_fitClamp(si-bd,0,FIT_STYLES.length-1);
+      out.fit_style={on_creator:item.fit_style,on_user:FIT_STYLES[adj],build_diff:bd,adjusted:adj!==si};
+      if(Math.abs(bd)>=2) out.flags.push({kind:'build_mismatch',message:`Cut was styled on a very different build — will read quite differently.`});
+    }
+  }
+  if(creator.usual_size && user.usual_size){
+    const c=_fitIdx(FIT_SIZES,creator.usual_size), u=_fitIdx(FIT_SIZES,user.usual_size);
+    if(c!==null && u!==null) out.size={delta:u-c,creator:creator.usual_size,user:user.usual_size};
+  }
+  return out;
+}
+
+// Human-readable notes derived from an analysis. Empty array = nothing to say.
+function fitNotes(analysis, creatorName){
+  if(!analysis) return [];
+  const out=[];
+  if(analysis.size && analysis.size.delta!==0){
+    const dir = analysis.size.delta>0?'sizing up':'sizing down';
+    out.push(`Consider ${dir} — ${creatorName||'creator'} wore ${analysis.size.creator} but you typically wear ${analysis.size.user}`);
+  }
+  if(analysis.length && analysis.length.shift_steps!==0){
+    const onUser = FIT_LENGTH_LABELS[analysis.length.on_user]||analysis.length.on_user;
+    const onCreator = FIT_LENGTH_LABELS[analysis.length.on_creator]||analysis.length.on_creator;
+    out.push(`Hits at ${onUser} on you (was ${onCreator} on ${creatorName||'creator'})`);
+  }
+  if(analysis.fit_style && analysis.fit_style.adjusted){
+    out.push(`Will read ${analysis.fit_style.on_user} on your build`);
+  }
+  for(const f of (analysis.flags||[])) out.push(f.message);
+  return out;
+}
+
 function formatHaulForFeed(haul, items, creatorProfile){
   const initial = (haul.creator_name||"?")[0].toUpperCase();
   const idx = haul.id.charCodeAt(0) % BG_GRADIENTS.length;
@@ -263,9 +322,28 @@ function DetailScreen({haul,onBack,onCheckout}){
   const [items,setItems]=useState(haul.items);
   const [loadingPrices,setLoadingPrices]=useState(false);
   const [debugMsg,setDebugMsg]=useState(null);
+  const [userProfile,setUserProfile]=useState(null);
   const selected=items.filter(i=>i.checked);
   const total=selected.reduce((s,i)=>s+i.price,0);
   const toggle=id=>setItems(items.map(i=>i.id===id?{...i,checked:!i.checked}:i));
+
+  // Fit intelligence: need the viewing user's profile to project the creator's
+  // wear onto them. Silent if they're not signed in or haven't set up fit.
+  useEffect(()=>{
+    (async()=>{
+      const {data:{user}} = await supabase.auth.getUser();
+      if(!user) return;
+      const {data} = await supabase.from("user_profiles").select("*").eq("user_id",user.id).maybeSingle();
+      if(data && data.height_cm) setUserProfile(data);
+    })();
+  },[]);
+
+  const creatorForFit = {
+    height_cm: haul.creator_height_cm,
+    build: haul.creator_build,
+    usual_size: haul.creator_usual_size,
+  };
+  const hasCreatorFit = creatorForFit.height_cm || creatorForFit.build || creatorForFit.usual_size;
 
   React.useEffect(()=>{
     const itemsWithLinks=haul.items.filter(i=>i.link);
@@ -331,22 +409,38 @@ function DetailScreen({haul,onBack,onCheckout}){
         {!loadingPrices&&debugMsg&&(
           <div style={{background:"#FFF8E8",border:"1px solid #E8D080",borderRadius:12,padding:"8px 12px",marginBottom:12,fontSize:10,color:"#5A4800",fontFamily:FB,wordBreak:"break-all"}}>{debugMsg}</div>
         )}
-        {items.map(item=>(
-          <div key={item.id} onClick={()=>toggle(item.id)} style={{display:"flex",alignItems:"center",gap:10,background:item.checked?C.accentLight:C.tag,border:`1.5px solid ${item.checked?C.accent:C.border}`,borderRadius:14,padding:12,marginBottom:8,cursor:"pointer"}}>
-            <div style={{width:20,height:20,borderRadius:5,border:`2px solid ${item.checked?C.accent:C.border}`,background:item.checked?C.accent:"white",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-              {item.checked&&<span style={{color:"white",fontSize:12,fontWeight:700}}>✓</span>}
+        {items.map(item=>{
+          const notes = (userProfile && hasCreatorFit)
+            ? fitNotes(analyzeFit({creator:creatorForFit,user:userProfile,item}),haul.creator)
+            : [];
+          return (
+            <div key={item.id} style={{marginBottom:8}}>
+              <div onClick={()=>toggle(item.id)} style={{display:"flex",alignItems:"center",gap:10,background:item.checked?C.accentLight:C.tag,border:`1.5px solid ${item.checked?C.accent:C.border}`,borderRadius:14,padding:12,cursor:"pointer"}}>
+                <div style={{width:20,height:20,borderRadius:5,border:`2px solid ${item.checked?C.accent:C.border}`,background:item.checked?C.accent:"white",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                  {item.checked&&<span style={{color:"white",fontSize:12,fontWeight:700}}>✓</span>}
+                </div>
+                {item.image
+                  ? <img src={item.image} alt={item.name} style={{width:44,height:44,borderRadius:10,objectFit:"cover",flexShrink:0}} onError={e=>{e.target.style.display="none"}}/>
+                  : <Dot col={item.color}/>
+                }
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:700,fontSize:13,color:C.dark,fontFamily:FB}}>{item.name}</div>
+                  <div style={{fontSize:11,color:C.muted,fontFamily:FB}}>{item.brand}</div>
+                </div>
+                <div style={{fontWeight:800,fontSize:14,color:C.dark,fontFamily:FB}}>{item.realPrice||`$${item.price.toFixed(2)}`}</div>
+              </div>
+              {notes.length>0 && (
+                <div style={{marginTop:4,background:C.accentLight,borderLeft:`3px solid ${C.accent}`,borderRadius:8,padding:"8px 12px",fontSize:12,color:C.dark,fontFamily:FB,lineHeight:1.5}}>
+                  {notes.map((n,i)=>(
+                    <div key={i} style={{marginTop:i?4:0}}>
+                      <span style={{fontWeight:700,color:C.accent,marginRight:6}}>Fit</span>{n}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-            {item.image
-              ? <img src={item.image} alt={item.name} style={{width:44,height:44,borderRadius:10,objectFit:"cover",flexShrink:0}} onError={e=>{e.target.style.display="none"}}/>
-              : <Dot col={item.color}/>
-            }
-            <div style={{flex:1}}>
-              <div style={{fontWeight:700,fontSize:13,color:C.dark,fontFamily:FB}}>{item.name}</div>
-              <div style={{fontSize:11,color:C.muted,fontFamily:FB}}>{item.brand}</div>
-            </div>
-            <div style={{fontWeight:800,fontSize:14,color:C.dark,fontFamily:FB}}>{item.realPrice||`$${item.price.toFixed(2)}`}</div>
-          </div>
-        ))}
+          );
+        })}
       </div>
       <div style={{position:"absolute",bottom:0,left:0,right:0,background:"white",borderTop:`1px solid ${C.border}`,padding:"14px 16px 24px",boxShadow:"0 -8px 30px rgba(26,18,9,0.08)"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
