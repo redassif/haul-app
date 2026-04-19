@@ -137,6 +137,15 @@ function formatHaulForFeed(haul, items, creatorProfile){
 // Hauls and creator_profiles share creator_id (both FK to auth.users.id)
 // but there's no direct FK between them, so we can't do a Supabase nested
 // select. Fetch profiles separately and join in JS.
+// Supabase public URLs look like:
+// https://{project}.supabase.co/storage/v1/object/public/haul-videos/{path}
+// We need the path when deleting the underlying object.
+function storagePathFromVideoUrl(url){
+  if(!url) return null;
+  const m = url.match(/\/haul-videos\/(.+)$/);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
 async function enrichHaulsWithCreatorProfiles(hauls){
   const ids = [...new Set(hauls.map(h=>h.creator_id).filter(Boolean))];
   if(ids.length===0) return hauls.map(h=>({...h, _creatorProfile:null}));
@@ -1041,12 +1050,28 @@ function ProfileScreen({user, onSignOut, onUserUpdate}){
 }
 
 
-function PostHaulScreen({user, onBack, onPosted}){
-  const [title,setTitle]=useState("");
+// editingHaul (optional): an existing haul to edit, including its haul_items.
+// When set, this component updates the haul row + replaces haul_items instead
+// of inserting a new haul. The existing video is preserved unless the user
+// explicitly removes it and uploads a new one.
+function PostHaulScreen({user, onBack, onPosted, editingHaul=null}){
+  const isEdit = Boolean(editingHaul);
+  const newItem=()=>({id:Date.now()+Math.random(),name:"",link:"",price:"",brand:"",category:"",fit_style:"",length_on_creator:""});
+  const prefillItems = (editingHaul?.haul_items||[]).map(i=>({
+    id: i.id,
+    name: i.name||"",
+    brand: i.brand||"",
+    price: i.price!=null?String(i.price):"",
+    link: i.link||"",
+    category: i.category||"",
+    fit_style: i.fit_style||"",
+    length_on_creator: i.length_on_creator||"",
+  }));
+  const [title,setTitle]=useState(editingHaul?.title||"");
   const [videoFile,setVideoFile]=useState(null);
   const [videoPreview,setVideoPreview]=useState(null);
-  const newItem=()=>({id:Date.now(),name:"",link:"",price:"",brand:"",category:"",fit_style:"",length_on_creator:""});
-  const [items,setItems]=useState([newItem()]);
+  const [existingVideoUrl,setExistingVideoUrl]=useState(editingHaul?.video_url||null);
+  const [items,setItems]=useState(prefillItems.length?prefillItems:[newItem()]);
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState(null);
   const [stage,setStage]=useState("form"); // form | uploading | done
@@ -1079,7 +1104,7 @@ function PostHaulScreen({user, onBack, onPosted}){
 
   const handleSubmit=async()=>{
     if(!title.trim()) return setError("Please add a title.");
-    if(!videoFile) return setError("Please upload a video.");
+    if(!videoFile && !existingVideoUrl) return setError("Please upload a video.");
     const validItems=items.filter(i=>i.name.trim());
     if(validItems.length===0) return setError("Add at least one item.");
 
@@ -1088,40 +1113,82 @@ function PostHaulScreen({user, onBack, onPosted}){
     setError(null);
 
     try{
-      // 1. Upload video to Supabase Storage
-      const ext=videoFile.name.split(".").pop();
-      const path=`hauls/${user.id}/${Date.now()}.${ext}`;
-      const{error:uploadError}=await supabase.storage
-        .from("haul-videos")
-        .upload(path, videoFile, {cacheControl:"3600",upsert:false});
-      if(uploadError) throw uploadError;
+      // 1. Upload the new video (if one was picked). In edit mode, also
+      // delete the old object so we don't orphan storage. We upload first;
+      // only on success do we touch the old blob — safer if upload fails.
+      let videoUrl = existingVideoUrl;
+      let newUploadPath = null;
+      if(videoFile){
+        const ext = videoFile.name.split(".").pop();
+        newUploadPath = `hauls/${user.id}/${Date.now()}.${ext}`;
+        const {error:uploadError} = await supabase.storage
+          .from("haul-videos")
+          .upload(newUploadPath, videoFile, {cacheControl:"3600",upsert:false});
+        if(uploadError) throw uploadError;
+        const {data:{publicUrl}} = supabase.storage
+          .from("haul-videos")
+          .getPublicUrl(newUploadPath);
+        videoUrl = publicUrl;
+      }
 
-      // 2. Get public URL
-      const{data:{publicUrl}}=supabase.storage
-        .from("haul-videos")
-        .getPublicUrl(path);
+      let haul;
+      if(isEdit){
+        // 2a. Update the existing haul row. Leave views/likes alone —
+        // editing metadata shouldn't reset engagement counts.
+        const updates = {title:title.trim()};
+        if(videoFile) updates.video_url = videoUrl;
+        const {data,error:updateError} = await supabase
+          .from("hauls")
+          .update(updates)
+          .eq("id", editingHaul.id)
+          .select()
+          .single();
+        if(updateError) throw updateError;
+        haul = data;
 
-      // 3. Insert haul record. creator_name/handle are denormalized snapshots
-      // at post time — pulled from the creator's profile so renames on the
-      // profile don't retroactively rewrite old hauls.
-      const{data:haul,error:haulError}=await supabase
-        .from("hauls")
-        .insert({
-          creator_id: user.id,
-          creator_name: creatorProfile.name,
-          creator_handle: creatorProfile.handle,
-          title: title.trim(),
-          video_url: publicUrl,
-          views: 0,
-          likes: 0,
-        })
-        .select()
-        .single();
-      if(haulError) throw haulError;
+        // 2b. Replace haul_items entirely. Simpler than diffing — diffing
+        // would pay off only if other tables FK into haul_items (cart lines,
+        // orders). If that gets added later, move to a proper upsert/diff.
+        const {error:delItemsError} = await supabase
+          .from("haul_items")
+          .delete()
+          .eq("haul_id", editingHaul.id);
+        if(delItemsError) throw delItemsError;
 
-      // 4. Insert items with fit tags. category/fit_style/length_on_creator
+        // 2c. If the video changed, delete the old blob. Best-effort — a
+        // storage leak is strictly worse than a failed save, so we don't
+        // throw if this fails.
+        if(videoFile && editingHaul.video_url){
+          const oldPath = storagePathFromVideoUrl(editingHaul.video_url);
+          if(oldPath){
+            supabase.storage.from("haul-videos").remove([oldPath])
+              .catch(e=>console.warn("Old video cleanup failed:", e.message));
+          }
+        }
+      } else {
+        // 2. Insert new haul. creator_name/handle are denormalized snapshots
+        // at post time — pulled from the creator's profile so renames on the
+        // profile don't retroactively rewrite old hauls.
+        const {data,error:haulError} = await supabase
+          .from("hauls")
+          .insert({
+            creator_id: user.id,
+            creator_name: creatorProfile.name,
+            creator_handle: creatorProfile.handle,
+            title: title.trim(),
+            video_url: videoUrl,
+            views: 0,
+            likes: 0,
+          })
+          .select()
+          .single();
+        if(haulError) throw haulError;
+        haul = data;
+      }
+
+      // 3. Insert items with fit tags. category/fit_style/length_on_creator
       // feed the deterministic fit projection in src/lib/fit.js.
-      const itemRows=validItems.map(i=>({
+      const itemRows = validItems.map(i=>({
         haul_id: haul.id,
         name: i.name.trim(),
         brand: i.brand.trim(),
@@ -1131,14 +1198,14 @@ function PostHaulScreen({user, onBack, onPosted}){
         fit_style: i.fit_style||null,
         length_on_creator: i.length_on_creator||null,
       }));
-      const{data:insertedItems,error:itemsError}=await supabase
+      const {data:insertedItems,error:itemsError} = await supabase
         .from("haul_items")
         .insert(itemRows)
         .select();
       if(itemsError) throw itemsError;
 
-      // 5. Fire & forget — product.js fetches real prices and writes to DB server-side
-      const itemsWithLinks=(insertedItems||[]).filter(i=>i.link);
+      // 4. Fire & forget — product.js fetches real prices and writes to DB server-side
+      const itemsWithLinks = (insertedItems||[]).filter(i=>i.link);
       if(itemsWithLinks.length>0){
         fetch("/api/product",{
           method:"POST",
@@ -1163,7 +1230,9 @@ function PostHaulScreen({user, onBack, onPosted}){
     </div>
   );
 
-  if(!creatorProfile) return(
+  // Creator profile is required for a first post. On edit, the haul already
+  // exists, so a profile must already exist — skip the gate.
+  if(!isEdit && !creatorProfile) return(
     <CreatorOnboarding
       user={user}
       onSave={(p)=>setCreatorProfile(p)}
@@ -1174,17 +1243,17 @@ function PostHaulScreen({user, onBack, onPosted}){
   if(stage==="done") return(
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",padding:32,textAlign:"center"}}>
       <div style={{fontSize:56,marginBottom:16}}>🎉</div>
-      <div style={{fontSize:22,fontWeight:700,fontStyle:"italic",color:C.dark,fontFamily:FD,marginBottom:8}}>Haul Posted!</div>
-      <div style={{fontSize:13,color:C.muted,fontFamily:FB,lineHeight:1.8,marginBottom:28}}>Your haul is live. Shoppers can now discover and buy your looks.</div>
-      <button onClick={onPosted} style={{width:"100%",padding:14,borderRadius:14,background:C.dark,color:"white",border:"none",fontWeight:700,fontSize:14,fontFamily:FBtn,cursor:"pointer"}}>Back to Feed</button>
+      <div style={{fontSize:22,fontWeight:700,fontStyle:"italic",color:C.dark,fontFamily:FD,marginBottom:8}}>{isEdit?"Haul Updated!":"Haul Posted!"}</div>
+      <div style={{fontSize:13,color:C.muted,fontFamily:FB,lineHeight:1.8,marginBottom:28}}>{isEdit?"Your changes are live.":"Your haul is live. Shoppers can now discover and buy your looks."}</div>
+      <button onClick={onPosted} style={{width:"100%",padding:14,borderRadius:14,background:C.dark,color:"white",border:"none",fontWeight:700,fontSize:14,fontFamily:FBtn,cursor:"pointer"}}>{isEdit?"Back to My Hauls":"Back to Feed"}</button>
     </div>
   );
 
   if(stage==="uploading") return(
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",padding:32,textAlign:"center"}}>
       <div style={{fontSize:56,marginBottom:16}}>📤</div>
-      <div style={{fontSize:20,fontWeight:700,fontStyle:"italic",color:C.dark,fontFamily:FD,marginBottom:8}}>Uploading your haul...</div>
-      <div style={{fontSize:13,color:C.muted,fontFamily:FB,marginBottom:20}}>Uploading video and verifying prices...</div>
+      <div style={{fontSize:20,fontWeight:700,fontStyle:"italic",color:C.dark,fontFamily:FD,marginBottom:8}}>{isEdit?"Saving your changes…":"Uploading your haul..."}</div>
+      <div style={{fontSize:13,color:C.muted,fontFamily:FB,marginBottom:20}}>{isEdit?"This should only take a moment.":"Uploading video and verifying prices..."}</div>
       <div style={{display:"flex",gap:6}}>
         {[0,1,2].map(i=><div key={i} style={{width:8,height:8,borderRadius:"50%",background:C.accent,animation:`bounce 0.8s ease-in-out ${i*0.2}s infinite alternate`}}/>)}
       </div>
@@ -1196,9 +1265,9 @@ function PostHaulScreen({user, onBack, onPosted}){
       <div style={{padding:"16px 16px 0",flexShrink:0}}>
         <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:4}}>
           <button onClick={onBack} style={{width:32,height:32,borderRadius:"50%",background:C.tag,border:"none",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>←</button>
-          <div style={{fontSize:18,fontWeight:700,fontStyle:"italic",color:C.dark,fontFamily:FD}}>Post a Haul</div>
+          <div style={{fontSize:18,fontWeight:700,fontStyle:"italic",color:C.dark,fontFamily:FD}}>{isEdit?"Edit Haul":"Post a Haul"}</div>
         </div>
-        <div style={{fontSize:12,color:C.muted,fontFamily:FB,marginBottom:14,paddingLeft:44}}>Share your look, earn on every purchase.</div>
+        <div style={{fontSize:12,color:C.muted,fontFamily:FB,marginBottom:14,paddingLeft:44}}>{isEdit?"Update your look, tags, or video.":"Share your look, earn on every purchase."}</div>
       </div>
 
       <div style={{flex:1,overflowY:"auto",padding:"0 16px 120px"}}>
@@ -1210,6 +1279,8 @@ function PostHaulScreen({user, onBack, onPosted}){
             <input type="file" accept="video/*" onChange={handleVideo} style={{display:"none"}}/>
             {videoPreview
               ? <video src={videoPreview} style={{width:"100%",height:160,objectFit:"cover",borderRadius:14,border:`1px solid ${C.border}`}} muted playsInline/>
+              : existingVideoUrl
+              ? <video src={existingVideoUrl} style={{width:"100%",height:160,objectFit:"cover",borderRadius:14,border:`1px solid ${C.border}`}} muted playsInline/>
               : <div style={{width:"100%",height:160,borderRadius:14,border:`2px dashed ${C.border}`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,background:C.tag}}>
                   <div style={{fontSize:28}}>🎬</div>
                   <div style={{fontSize:13,color:C.muted,fontFamily:FB}}>Tap to upload video</div>
@@ -1217,7 +1288,12 @@ function PostHaulScreen({user, onBack, onPosted}){
                 </div>
             }
           </label>
-          {videoPreview&&<button onClick={()=>{setVideoFile(null);setVideoPreview(null);}} style={{marginTop:6,fontSize:11,color:C.accent,fontFamily:FB,background:"none",border:"none",cursor:"pointer",padding:0}}>Remove video</button>}
+          {videoPreview
+            ? <button onClick={()=>{setVideoFile(null);setVideoPreview(null);}} style={{marginTop:6,fontSize:11,color:C.accent,fontFamily:FB,background:"none",border:"none",cursor:"pointer",padding:0}}>Remove video</button>
+            : existingVideoUrl
+            ? <button onClick={()=>{setExistingVideoUrl(null);}} style={{marginTop:6,fontSize:11,color:C.accent,fontFamily:FB,background:"none",border:"none",cursor:"pointer",padding:0}}>Remove video</button>
+            : null
+          }
         </div>
 
         {/* Title */}
@@ -1315,15 +1391,110 @@ function PostHaulScreen({user, onBack, onPosted}){
       <div style={{position:"absolute",bottom:0,left:0,right:0,background:C.bg,borderTop:`1px solid ${C.border}`,padding:"14px 16px 28px"}}>
         <button onClick={handleSubmit} disabled={loading}
           style={{width:"100%",padding:14,borderRadius:14,background:C.dark,color:"white",border:"none",fontWeight:700,fontSize:14,fontFamily:FBtn,cursor:"pointer"}}>
-          Post Haul →
+          {isEdit?"Save Changes →":"Post Haul →"}
         </button>
       </div>
     </div>
   );
 }
 
+function MyHaulsScreen({user, onEdit}){
+  const [hauls,setHauls]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [deletingId,setDeletingId]=useState(null);
+  const [error,setError]=useState(null);
+
+  const refresh=async()=>{
+    setLoading(true);
+    setError(null);
+    const {data,error:fetchError} = await supabase
+      .from("hauls")
+      .select("*, haul_items(*)")
+      .eq("creator_id", user.id)
+      .order("created_at", {ascending:false});
+    if(fetchError) setError(fetchError.message);
+    setHauls(data||[]);
+    setLoading(false);
+  };
+
+  useEffect(()=>{ refresh(); },[user.id]);
+
+  const handleDelete = async(haul)=>{
+    if(!window.confirm(`Delete "${haul.title}"? This can't be undone.`)) return;
+    setDeletingId(haul.id);
+    setError(null);
+    try{
+      // haul_items first (in case no ON DELETE CASCADE FK), then hauls row,
+      // then the video blob. Order matters: if the haul row delete fails,
+      // we shouldn't have already pulled the video from storage.
+      const {error:itemsErr} = await supabase.from("haul_items").delete().eq("haul_id", haul.id);
+      if(itemsErr) throw itemsErr;
+      const {error:haulErr} = await supabase.from("hauls").delete().eq("id", haul.id);
+      if(haulErr) throw haulErr;
+      if(haul.video_url){
+        const p = storagePathFromVideoUrl(haul.video_url);
+        if(p){
+          // Best-effort; storage leak is survivable, row deletion already landed.
+          supabase.storage.from("haul-videos").remove([p])
+            .catch(e=>console.warn("Video cleanup failed:", e.message));
+        }
+      }
+      setHauls(prev=>prev.filter(h=>h.id!==haul.id));
+    }catch(err){
+      setError(err.message);
+    }
+    setDeletingId(null);
+  };
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+      <div style={{padding:"16px 16px 10px",flexShrink:0}}>
+        <div style={{fontSize:22,fontWeight:800,fontStyle:"italic",color:C.dark,fontFamily:FD}}>My Hauls</div>
+        <div style={{fontSize:12,color:C.muted,fontFamily:FB,marginTop:2}}>Edit or delete what you've posted.</div>
+      </div>
+      {error&&<div style={{margin:"0 16px 10px",fontSize:12,color:C.accent,fontFamily:FB,background:C.accentLight,padding:"8px 12px",borderRadius:8}}>{error}</div>}
+      <div style={{flex:1,overflowY:"auto",padding:"0 16px 100px"}}>
+        {loading
+          ? <div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"40px 0"}}>
+              <div style={{display:"flex",gap:6}}>
+                {[0,1,2].map(i=><div key={i} style={{width:8,height:8,borderRadius:"50%",background:C.accent,animation:`bounce 0.8s ease-in-out ${i*0.2}s infinite alternate`}}/>)}
+              </div>
+            </div>
+          : hauls.length===0
+          ? <div style={{textAlign:"center",padding:"48px 16px",color:C.muted,fontFamily:FB,fontSize:13,lineHeight:1.6}}>No hauls yet — tap <span style={{fontWeight:700,color:C.accent}}>+ Post Haul</span> on the Feed to get started.</div>
+          : hauls.map(h=>{
+              const itemCount = (h.haul_items||[]).length;
+              const isDeleting = deletingId===h.id;
+              return(
+                <div key={h.id} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,overflow:"hidden",marginBottom:12,opacity:isDeleting?0.5:1}}>
+                  <div style={{display:"flex",gap:12,padding:12}}>
+                    {h.video_url
+                      ? <video src={h.video_url} style={{width:80,height:80,objectFit:"cover",borderRadius:10,flexShrink:0,background:C.tag}} muted playsInline/>
+                      : <div style={{width:80,height:80,borderRadius:10,background:C.tag,display:"flex",alignItems:"center",justifyContent:"center",fontSize:26,flexShrink:0}}>🎬</div>
+                    }
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontWeight:700,fontSize:14,color:C.dark,fontFamily:FD,fontStyle:"italic",marginBottom:4,lineHeight:1.25,overflow:"hidden",textOverflow:"ellipsis",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{h.title||"Untitled"}</div>
+                      <div style={{fontSize:11,color:C.muted,fontFamily:FB}}>{itemCount} item{itemCount===1?"":"s"} · {h.views||0} views</div>
+                    </div>
+                  </div>
+                  <div style={{display:"flex",borderTop:`1px solid ${C.border}`}}>
+                    <button onClick={()=>onEdit(h)} disabled={isDeleting}
+                      style={{flex:1,padding:10,border:"none",background:"none",fontSize:13,fontWeight:700,color:C.dark,fontFamily:FBtn,cursor:isDeleting?"not-allowed":"pointer"}}>Edit</button>
+                    <div style={{width:1,background:C.border}}/>
+                    <button onClick={()=>handleDelete(h)} disabled={isDeleting}
+                      style={{flex:1,padding:10,border:"none",background:"none",fontSize:13,fontWeight:700,color:C.accent,fontFamily:FBtn,cursor:isDeleting?"not-allowed":"pointer"}}>{isDeleting?"Deleting…":"Delete"}</button>
+                  </div>
+                </div>
+              );
+            })
+        }
+      </div>
+    </div>
+  );
+}
+
 function Nav({screen,set,user}){
-  const tabs=[{id:"feed",icon:"▶",label:"Feed"},{id:"snap",icon:"✨",label:"AI Stylist"},{id:"profile",icon:"👤",label:"Profile"}];
+  const tabs=[{id:"feed",icon:"▶",label:"Feed"},{id:"snap",icon:"✨",label:"AI Stylist"},{id:"myhauls",icon:"🎥",label:"My Hauls"},{id:"profile",icon:"👤",label:"Profile"}];
   return(
     <div style={{position:"absolute",bottom:0,left:0,right:0,background:"#EDEDED",borderTop:`1px solid ${C.border}`,display:"flex",padding:"8px 0 18px"}}>
       {tabs.map(t=>(
@@ -1348,8 +1519,9 @@ function App(){
   const [user,setUser]=useState(null);
   const [authModal,setAuthModal]=useState(null); // null | "buy" | "post" | "stylist"
   const [postHaul,setPostHaul]=useState(false);
+  const [editingHaul,setEditingHaul]=useState(null);
   const [pendingAction,setPendingAction]=useState(null);
-  const showNav=(screen==="feed"||screen==="snap"||screen==="profile")&&!postHaul;
+  const showNav=(screen==="feed"||screen==="snap"||screen==="myhauls"||screen==="profile")&&!postHaul&&!editingHaul;
 
   useEffect(()=>{
     supabase.auth.getSession().then(({data:{session}})=>{
@@ -1375,6 +1547,7 @@ function App(){
 
   const handleNavChange=(tab)=>{
     if(tab==="snap"){ requireAuth("stylist",()=>setScreen("snap")); return; }
+    if(tab==="myhauls"){ requireAuth("post",()=>setScreen("myhauls")); return; }
     setScreen(tab);
   };
 
@@ -1390,7 +1563,9 @@ function App(){
         {screen==="checkout"&&checkout&&<CheckoutScreen items={checkout.items} total={checkout.total} onDone={()=>{setCheckout(null);setHaul(null);setScreen("feed");}}/>}
         {screen==="snap"&&<SnapScreen onBack={()=>setScreen("feed")} onCheckout={(items,total)=>requireAuth("buy",()=>{setCheckout({items,total});setScreen("checkout");})}/>}
         {screen==="profile"&&<ProfileScreen user={user} onSignOut={async()=>{await supabase.auth.signOut();setUser(null);setScreen("feed");}} onUserUpdate={(u)=>setUser(u)}/> }
+        {screen==="myhauls"&&user&&!editingHaul&&<MyHaulsScreen user={user} onEdit={(h)=>setEditingHaul(h)}/>}
         {postHaul&&<PostHaulScreen user={user} onBack={()=>setPostHaul(false)} onPosted={()=>{setPostHaul(false);setScreen("feed");}}/>}
+        {editingHaul&&<PostHaulScreen user={user} editingHaul={editingHaul} onBack={()=>setEditingHaul(null)} onPosted={()=>{setEditingHaul(null);setScreen("myhauls");}}/>}
       </div>
       {showNav&&<Nav screen={screen} set={handleNavChange} user={user}/>}
       {authModal&&<AuthModal reason={authModal} onClose={()=>setAuthModal(null)} onSuccess={handleAuthSuccess}/>}
