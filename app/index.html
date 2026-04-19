@@ -1105,8 +1105,8 @@ function PostHaulScreen({user, onBack, onPosted, editingHaul=null}){
   const handleSubmit=async()=>{
     if(!title.trim()) return setError("Please add a title.");
     if(!videoFile && !existingVideoUrl) return setError("Please upload a video.");
-    const validItems=items.filter(i=>i.name.trim());
-    if(validItems.length===0) return setError("Add at least one item.");
+    const validItems=items.filter(i=>i.link.trim());
+    if(validItems.length===0) return setError("Add at least one product link.");
 
     setLoading(true);
     setStage("uploading");
@@ -1186,14 +1186,18 @@ function PostHaulScreen({user, onBack, onPosted, editingHaul=null}){
         haul = data;
       }
 
-      // 3. Insert items with fit tags. category/fit_style/length_on_creator
-      // feed the deterministic fit projection in src/lib/fit.js.
+      // 3. Insert items. Creator supplies link + fit tags; name/brand/price
+      // are populated from Rye via the server-side writeback below.
+      // category/fit_style/length_on_creator feed the deterministic fit
+      // projection in src/lib/fit.js.
       const itemRows = validItems.map(i=>({
         haul_id: haul.id,
-        name: i.name.trim(),
-        brand: i.brand.trim(),
-        price: parseFloat(i.price)||0,
         link: i.link.trim(),
+        // Preserve any existing name/brand/price on edit so the UI isn't
+        // blank during the brief window before Rye's writeback lands.
+        name: i.name||null,
+        brand: i.brand||null,
+        price: i.price!==""&&i.price!=null?parseFloat(i.price)||0:0,
         category: i.category||null,
         fit_style: i.fit_style||null,
         length_on_creator: i.length_on_creator||null,
@@ -1204,19 +1208,16 @@ function PostHaulScreen({user, onBack, onPosted, editingHaul=null}){
         .select();
       if(itemsError) throw itemsError;
 
-      // 4. Fire & forget — product.js fetches real prices and writes to DB
-      // server-side. Skipped on edit: the Rye writeback also overwrites name
-      // and brand from the scraped page, which would clobber the creator's
-      // typed edits. On edit the creator's input is authoritative.
-      if(!isEdit){
-        const itemsWithLinks = (insertedItems||[]).filter(i=>i.link);
-        if(itemsWithLinks.length>0){
-          fetch("/api/product",{
-            method:"POST",
-            headers:{"Content-Type":"application/json"},
-            body:JSON.stringify({urls:itemsWithLinks.map(i=>({id:i.id,url:i.link}))})
-          }).catch(e=>console.warn("Price lookup failed:",e.message));
-        }
+      // 4. Fire & forget — product.js fetches name/brand/price from Rye
+      // and writes them back server-side. Runs on both post and edit since
+      // Rye is now the sole source of truth for those fields.
+      const itemsWithLinks = (insertedItems||[]).filter(i=>i.link);
+      if(itemsWithLinks.length>0){
+        fetch("/api/product",{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({urls:itemsWithLinks.map(i=>({id:i.id,url:i.link}))})
+        }).catch(e=>console.warn("Price lookup failed:",e.message));
       }
 
       setStage("done");
@@ -1322,25 +1323,11 @@ function PostHaulScreen({user, onBack, onPosted, editingHaul=null}){
                 {items.length>1&&<button onClick={()=>removeItem(item.id)} style={{fontSize:11,color:C.muted,fontFamily:FB,background:"none",border:"none",cursor:"pointer",padding:0}}>Remove</button>}
               </div>
               <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
-                <div style={{flex:"1 1 calc(60% - 4px)"}}>
-                  <div style={{fontSize:10,color:C.muted,fontFamily:FB,marginBottom:3}}>Item name *</div>
-                  <input value={item.name} onChange={e=>updateItem(item.id,"name",e.target.value)} placeholder="Tailored Midi Skirt"
-                    style={{width:"100%",padding:"8px 10px",borderRadius:8,border:`1px solid ${C.border}`,background:C.bg,fontSize:12,fontFamily:FB,color:C.dark,outline:"none"}}/>
-                </div>
-                <div style={{flex:"1 1 calc(40% - 4px)"}}>
-                  <div style={{fontSize:10,color:C.muted,fontFamily:FB,marginBottom:3}}>Brand</div>
-                  <input value={item.brand} onChange={e=>updateItem(item.id,"brand",e.target.value)} placeholder="Zara"
-                    style={{width:"100%",padding:"8px 10px",borderRadius:8,border:`1px solid ${C.border}`,background:C.bg,fontSize:12,fontFamily:FB,color:C.dark,outline:"none"}}/>
-                </div>
-                <div style={{flex:"1 1 calc(40% - 4px)"}}>
-                  <div style={{fontSize:10,color:C.muted,fontFamily:FB,marginBottom:3}}>Price ($)</div>
-                  <input value={item.price} onChange={e=>updateItem(item.id,"price",e.target.value)} placeholder="99.99" type="number"
-                    style={{width:"100%",padding:"8px 10px",borderRadius:8,border:`1px solid ${C.border}`,background:C.bg,fontSize:12,fontFamily:FB,color:C.dark,outline:"none"}}/>
-                </div>
-                <div style={{flex:"1 1 calc(60% - 4px)"}}>
-                  <div style={{fontSize:10,color:C.muted,fontFamily:FB,marginBottom:3}}>Product link</div>
+                <div style={{flex:"1 1 100%"}}>
+                  <div style={{fontSize:10,color:C.muted,fontFamily:FB,marginBottom:3}}>Product link *</div>
                   <input value={item.link} onChange={e=>updateItem(item.id,"link",e.target.value)} placeholder="https://..."
                     style={{width:"100%",padding:"8px 10px",borderRadius:8,border:`1px solid ${C.border}`,background:C.bg,fontSize:12,fontFamily:FB,color:C.dark,outline:"none"}}/>
+                  <div style={{fontSize:10,color:C.muted,fontFamily:FB,marginTop:4,fontStyle:"italic"}}>Name, brand, and price auto-fill from the product page.</div>
                 </div>
                 <div style={{flex:"1 1 100%",marginTop:4,fontSize:10,color:C.muted,fontFamily:FB,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Fit tags</div>
                 <div style={{flex:"1 1 calc(33% - 6px)"}}>
