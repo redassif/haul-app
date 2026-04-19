@@ -1204,14 +1204,19 @@ function PostHaulScreen({user, onBack, onPosted, editingHaul=null}){
         .select();
       if(itemsError) throw itemsError;
 
-      // 4. Fire & forget — product.js fetches real prices and writes to DB server-side
-      const itemsWithLinks = (insertedItems||[]).filter(i=>i.link);
-      if(itemsWithLinks.length>0){
-        fetch("/api/product",{
-          method:"POST",
-          headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({urls:itemsWithLinks.map(i=>({id:i.id,url:i.link}))})
-        }).catch(e=>console.warn("Price lookup failed:",e.message));
+      // 4. Fire & forget — product.js fetches real prices and writes to DB
+      // server-side. Skipped on edit: the Rye writeback also overwrites name
+      // and brand from the scraped page, which would clobber the creator's
+      // typed edits. On edit the creator's input is authoritative.
+      if(!isEdit){
+        const itemsWithLinks = (insertedItems||[]).filter(i=>i.link);
+        if(itemsWithLinks.length>0){
+          fetch("/api/product",{
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({urls:itemsWithLinks.map(i=>({id:i.id,url:i.link}))})
+          }).catch(e=>console.warn("Price lookup failed:",e.message));
+        }
       }
 
       setStage("done");
