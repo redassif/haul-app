@@ -1056,7 +1056,18 @@ function ProfileScreen({user, onSignOut, onUserUpdate}){
 // explicitly removes it and uploads a new one.
 function PostHaulScreen({user, onBack, onPosted, editingHaul=null}){
   const isEdit = Boolean(editingHaul);
-  const newItem=()=>({id:Date.now()+Math.random(),name:"",link:"",price:"",brand:"",category:"",fit_style:"",length_on_creator:""});
+  // validation: { status: 'idle'|'checking'|'valid'|'invalid', reason?, data?, validatedUrl? }
+  // validatedUrl tracks which URL was last checked so we don't re-validate on
+  // every blur if the link hasn't changed.
+  const newItem=()=>({
+    id:Date.now()+Math.random(),
+    name:"",link:"",price:"",brand:"",
+    category:"",fit_style:"",length_on_creator:"",
+    validation:{status:"idle"},
+  });
+  // On edit, prefilled items already have known-good data from the DB; mark
+  // them as valid up-front so the submit button isn't blocked. If the creator
+  // changes the URL, validation re-runs.
   const prefillItems = (editingHaul?.haul_items||[]).map(i=>({
     id: i.id,
     name: i.name||"",
@@ -1066,6 +1077,12 @@ function PostHaulScreen({user, onBack, onPosted, editingHaul=null}){
     category: i.category||"",
     fit_style: i.fit_style||"",
     length_on_creator: i.length_on_creator||"",
+    validation: i.link ? {
+      status:"valid",
+      validatedUrl:i.link,
+      data:{name:i.name||null, brand:i.brand||null, price:i.price||null, priceDisplay:null, image:null},
+      retailer:null,
+    } : {status:"idle"},
   }));
   const [title,setTitle]=useState(editingHaul?.title||"");
   const [videoFile,setVideoFile]=useState(null);
@@ -1093,7 +1110,54 @@ function PostHaulScreen({user, onBack, onPosted, editingHaul=null}){
 
   const addItem=()=>setItems(prev=>[...prev,newItem()]);
   const removeItem=(id)=>setItems(prev=>prev.filter(i=>i.id!==id));
-  const updateItem=(id,field,val)=>setItems(prev=>prev.map(i=>i.id===id?{...i,[field]:val}:i));
+  const updateItem=(id,field,val)=>setItems(prev=>prev.map(i=>{
+    if(i.id!==id) return i;
+    const next={...i,[field]:val};
+    // Editing the link invalidates any prior validation so the creator
+    // can't slip an unchecked URL through by retyping.
+    if(field==="link" && val!==i.validation?.validatedUrl){
+      next.validation={status:"idle"};
+    }
+    return next;
+  }));
+
+  // Validate a link via /api/check-url. Idempotent — skips the network
+  // call if we already validated this exact URL on this item.
+  const validateLink=async(itemId)=>{
+    const item = items.find(i=>i.id===itemId);
+    if(!item) return;
+    const link = item.link.trim();
+    if(!link) return;
+    if(item.validation?.validatedUrl===link && item.validation.status!=="idle") return;
+
+    setItems(prev=>prev.map(i=>i.id===itemId?{...i,validation:{status:"checking",validatedUrl:link}}:i));
+    try{
+      const resp = await fetch("/api/check-url", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({url:link}),
+      });
+      const result = await resp.json();
+      // Only update if the link hasn't changed since we kicked off — the
+      // creator may have retyped during the in-flight call.
+      setItems(prev=>prev.map(i=>{
+        if(i.id!==itemId || i.link.trim()!==link) return i;
+        return {...i, validation:{
+          status: result.valid ? "valid" : "invalid",
+          validatedUrl: link,
+          retailer: result.retailer || null,
+          data: result.data || null,
+          reason: result.reason || null,
+          isPurchasable: result.isPurchasable !== false,
+        }};
+      }));
+    }catch(err){
+      setItems(prev=>prev.map(i=>i.id===itemId && i.link.trim()===link
+        ? {...i, validation:{status:"invalid", validatedUrl:link, reason:`Could not validate: ${err.message}`}}
+        : i
+      ));
+    }
+  };
 
   const handleVideo=(e)=>{
     const file=e.target.files[0];
@@ -1107,6 +1171,15 @@ function PostHaulScreen({user, onBack, onPosted, editingHaul=null}){
     if(!videoFile && !existingVideoUrl) return setError("Please upload a video.");
     const validItems=items.filter(i=>i.link.trim());
     if(validItems.length===0) return setError("Add at least one product link.");
+
+    // Every link must have passed validation. Items in 'checking' or 'idle'
+    // also block — we need to know the URL is valid before posting.
+    const blockingItems = validItems.filter(i=>i.validation?.status!=="valid");
+    if(blockingItems.length>0){
+      const checking = blockingItems.some(i=>i.validation?.status==="checking");
+      if(checking) return setError("Still checking some links — give it a second.");
+      return setError("One or more links aren't supported. Please fix them before posting.");
+    }
 
     setLoading(true);
     setStage("uploading");
@@ -1186,18 +1259,16 @@ function PostHaulScreen({user, onBack, onPosted, editingHaul=null}){
         haul = data;
       }
 
-      // 3. Insert items. Creator supplies link + fit tags; name/brand/price
-      // are populated from Rye via the server-side writeback below.
-      // category/fit_style/length_on_creator feed the deterministic fit
-      // projection in src/lib/fit.js.
+      // 3. Insert items. Creator supplies only link + fit tags; name/brand/
+      // price come from the /api/check-url validation that ran when they
+      // pasted the link. Only fields Rye actually returned are populated —
+      // missing ones stay null rather than getting fabricated defaults.
       const itemRows = validItems.map(i=>({
         haul_id: haul.id,
         link: i.link.trim(),
-        // Preserve any existing name/brand/price on edit so the UI isn't
-        // blank during the brief window before Rye's writeback lands.
-        name: i.name||null,
-        brand: i.brand||null,
-        price: i.price!==""&&i.price!=null?parseFloat(i.price)||0:0,
+        name: i.validation?.data?.name ?? null,
+        brand: i.validation?.data?.brand ?? null,
+        price: i.validation?.data?.price ?? null,
         category: i.category||null,
         fit_style: i.fit_style||null,
         length_on_creator: i.length_on_creator||null,
@@ -1208,17 +1279,9 @@ function PostHaulScreen({user, onBack, onPosted, editingHaul=null}){
         .select();
       if(itemsError) throw itemsError;
 
-      // 4. Fire & forget — product.js fetches name/brand/price from Rye
-      // and writes them back server-side. Runs on both post and edit since
-      // Rye is now the sole source of truth for those fields.
-      const itemsWithLinks = (insertedItems||[]).filter(i=>i.link);
-      if(itemsWithLinks.length>0){
-        fetch("/api/product",{
-          method:"POST",
-          headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({urls:itemsWithLinks.map(i=>({id:i.id,url:i.link}))})
-        }).catch(e=>console.warn("Price lookup failed:",e.message));
-      }
+      // (No /api/product fire-and-forget here anymore — check-url already
+      // gave us the data when the link was pasted, and the row was inserted
+      // with the Rye-returned values directly.)
 
       setStage("done");
     }catch(err){
@@ -1325,9 +1388,43 @@ function PostHaulScreen({user, onBack, onPosted, editingHaul=null}){
               <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
                 <div style={{flex:"1 1 100%"}}>
                   <div style={{fontSize:10,color:C.muted,fontFamily:FB,marginBottom:3}}>Product link *</div>
-                  <input value={item.link} onChange={e=>updateItem(item.id,"link",e.target.value)} placeholder="https://..."
-                    style={{width:"100%",padding:"8px 10px",borderRadius:8,border:`1px solid ${C.border}`,background:C.bg,fontSize:12,fontFamily:FB,color:C.dark,outline:"none"}}/>
-                  <div style={{fontSize:10,color:C.muted,fontFamily:FB,marginTop:4,fontStyle:"italic"}}>Name, brand, and price auto-fill from the product page.</div>
+                  <input value={item.link}
+                    onChange={e=>updateItem(item.id,"link",e.target.value)}
+                    onBlur={()=>validateLink(item.id)}
+                    placeholder="https://..."
+                    style={{
+                      width:"100%",padding:"8px 10px",borderRadius:8,
+                      border:`1px solid ${
+                        item.validation?.status==="valid" ? "#2D6A4F"
+                        : item.validation?.status==="invalid" ? C.accent
+                        : C.border
+                      }`,
+                      background:C.bg,fontSize:12,fontFamily:FB,color:C.dark,outline:"none"
+                    }}/>
+                  {/* Validation feedback — one of four states. */}
+                  {item.validation?.status==="checking" && (
+                    <div style={{fontSize:10,color:C.muted,fontFamily:FB,marginTop:4,display:"flex",alignItems:"center",gap:6}}>
+                      <div style={{width:6,height:6,borderRadius:"50%",background:C.muted,animation:"bounce 0.8s ease-in-out infinite alternate"}}/>
+                      Checking link…
+                    </div>
+                  )}
+                  {item.validation?.status==="valid" && (
+                    <div style={{fontSize:10,color:"#2D6A4F",fontFamily:FB,marginTop:4,lineHeight:1.4}}>
+                      ✓ {item.validation.retailer || "Supported retailer"}
+                      {item.validation.data?.name ? ` · ${item.validation.data.name}` : ""}
+                      {item.validation.data?.priceDisplay ? ` · ${item.validation.data.priceDisplay}` : ""}
+                    </div>
+                  )}
+                  {item.validation?.status==="invalid" && (
+                    <div style={{fontSize:10,color:C.accent,fontFamily:FB,marginTop:4,lineHeight:1.4,background:C.accentLight,padding:"6px 8px",borderRadius:6}}>
+                      ✗ {item.validation.reason || "This link isn't supported."} Please paste a different product URL.
+                    </div>
+                  )}
+                  {item.validation?.status==="idle" && !item.link && (
+                    <div style={{fontSize:10,color:C.muted,fontFamily:FB,marginTop:4,fontStyle:"italic"}}>
+                      Name, brand, and price auto-fill from the product page.
+                    </div>
+                  )}
                 </div>
                 <div style={{flex:"1 1 100%",marginTop:4,fontSize:10,color:C.muted,fontFamily:FB,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Fit tags</div>
                 <div style={{flex:"1 1 calc(33% - 6px)"}}>
