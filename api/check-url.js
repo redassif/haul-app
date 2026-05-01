@@ -127,7 +127,23 @@ export default async function handler(req, res) {
     data.images?.[0]?.url ||
     null;
 
-  const resolvedRetailer = data.retailer || data.marketplace || retailer;
+  // Title-case retailer/brand strings that come back as ALL CAPS or all
+  // lowercase from Rye (e.g. "MANGO" → "Mango"). Mixed-case strings like
+  // "Fashion Nova" pass through unchanged.
+  const prettify = (s) => {
+    if (!s) return s;
+    if (s === s.toUpperCase() || s === s.toLowerCase()) {
+      return s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+    return s;
+  };
+
+  const resolvedRetailer = prettify(data.retailer || data.marketplace || retailer);
+
+  // Many retailers (Mango, Zara, etc.) don't repeat their own brand in the
+  // product metadata since the page is on their own site. Fall back to the
+  // retailer label so the haul card never shows a blank brand.
+  const resolvedBrand = prettify(data.brand || data.vendor) || resolvedRetailer || null;
 
   return res.status(200).json({
     url,
@@ -136,7 +152,7 @@ export default async function handler(req, res) {
     isPurchasable: data.isPurchasable !== false,
     data: {
       name: data.name || data.title || null,
-      brand: data.brand || data.vendor || null,
+      brand: resolvedBrand,
       price,
       priceDisplay,
       image,
