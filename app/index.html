@@ -1417,7 +1417,7 @@ function PostHaulScreen({user, onBack, onPosted, editingHaul=null}){
                   )}
                   {item.validation?.status==="invalid" && (
                     <div style={{fontSize:10,color:C.accent,fontFamily:FB,marginTop:4,lineHeight:1.4,background:C.accentLight,padding:"6px 8px",borderRadius:6}}>
-                      ✗ {item.validation.reason || "This link isn't supported."} Please paste a different product URL.
+                      ✗ Unsupported link — please paste a different product URL.
                     </div>
                   )}
                   {item.validation?.status==="idle" && !item.link && (
@@ -1478,10 +1478,28 @@ function PostHaulScreen({user, onBack, onPosted, editingHaul=null}){
       </div>
 
       <div style={{position:"absolute",bottom:0,left:0,right:0,background:C.bg,borderTop:`1px solid ${C.border}`,padding:"14px 16px 28px"}}>
-        <button onClick={handleSubmit} disabled={loading}
-          style={{width:"100%",padding:14,borderRadius:14,background:C.dark,color:"white",border:"none",fontWeight:700,fontSize:14,fontFamily:FBtn,cursor:"pointer"}}>
-          {isEdit?"Save Changes →":"Post Haul →"}
-        </button>
+        {(()=>{
+          // Submit is allowed only when every item with a link has passed
+          // validation. Items still 'checking', 'invalid', or 'idle' (not
+          // yet blurred) keep the button disabled.
+          const linksReady = items.filter(i=>i.link.trim())
+            .every(i=>i.validation?.status==="valid");
+          const canSubmit = !loading && linksReady;
+          return (
+            <button onClick={handleSubmit} disabled={!canSubmit}
+              style={{
+                width:"100%",padding:14,borderRadius:14,
+                background:canSubmit?C.dark:C.muted,
+                color:"white",border:"none",fontWeight:700,fontSize:14,
+                fontFamily:FBtn,
+                cursor:canSubmit?"pointer":"not-allowed",
+                opacity:canSubmit?1:0.55,
+                transition:"background 0.15s, opacity 0.15s",
+              }}>
+              {isEdit?"Save Changes →":"Post Haul →"}
+            </button>
+          );
+        })()}
       </div>
     </div>
   );
