@@ -410,9 +410,13 @@ function DetailScreen({haul,onBack,onCheckout}){
             <div style={{fontSize:12,color:C.accent,fontFamily:FB,fontWeight:600}}>Fetching live prices...</div>
           </div>
         )}
+        {/* Debug strip — kept commented for dev use, hidden in the live UI.
+            Uncomment to surface raw /api/product responses on the haul detail
+            page when troubleshooting Rye scrape issues.
         {!loadingPrices&&debugMsg&&(
           <div style={{background:"#FFF8E8",border:"1px solid #E8D080",borderRadius:12,padding:"8px 12px",marginBottom:12,fontSize:10,color:"#5A4800",fontFamily:FB,wordBreak:"break-all"}}>{debugMsg}</div>
         )}
+        */}
         {items.map(item=>{
           const notes = (userProfile && hasCreatorFit)
             ? fitNotes(analyzeFit({creator:creatorForFit,user:userProfile,item}),haul.creator)
@@ -1623,7 +1627,10 @@ function App(){
   const [postHaul,setPostHaul]=useState(false);
   const [editingHaul,setEditingHaul]=useState(null);
   const [pendingAction,setPendingAction]=useState(null);
-  const showNav=(screen==="feed"||screen==="snap"||screen==="myhauls"||screen==="profile")&&!postHaul&&!editingHaul;
+  // Hide nav whenever a screen has its own bottom bar (DetailScreen's
+  // checkout pill, CheckoutScreen, post/edit forms) so they don't stack
+  // on top of each other.
+  const showNav=(screen==="feed"||screen==="snap"||screen==="myhauls"||screen==="profile")&&!postHaul&&!editingHaul&&!haul&&screen!=="checkout";
 
   useEffect(()=>{
     supabase.auth.getSession().then(({data:{session}})=>{
