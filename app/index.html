@@ -934,6 +934,20 @@ function ProfileScreen({user, onSignOut, onUserUpdate}){
   const [loading,setLoading]=useState(false);
   const [success,setSuccess]=useState(null);
   const [error,setError]=useState(null);
+  // Real haul count from Supabase. null = still loading; render an em-dash
+  // until it lands so we don't briefly show "0" for someone who has hauls.
+  const [haulCount,setHaulCount]=useState(null);
+
+  useEffect(()=>{
+    if(!user) return;
+    (async()=>{
+      const {count} = await supabase
+        .from("hauls")
+        .select("*", {count:"exact", head:true})
+        .eq("creator_id", user.id);
+      setHaulCount(count ?? 0);
+    })();
+  },[user?.id]);
 
   const initials = user?.user_metadata?.full_name
     ? user.user_metadata.full_name.split(" ").map(n=>n[0]).join("").toUpperCase().slice(0,2)
@@ -992,7 +1006,11 @@ function ProfileScreen({user, onSignOut, onUserUpdate}){
 
       {!editing&&(
         <div style={{display:"flex",gap:10,marginBottom:24}}>
-          {[{l:"Hauls",v:"0"},{l:"Purchased",v:"$0"},{l:"Followers",v:"0"}].map(s=>(
+          {[
+            {l:"Hauls", v: haulCount===null ? "—" : String(haulCount)},
+            {l:"Purchased", v:"$0"},
+            {l:"Followers", v:"0"},
+          ].map(s=>(
             <div key={s.l} style={{flex:1,background:C.tag,borderRadius:14,padding:"12px 6px",textAlign:"center"}}>
               <div style={{fontSize:18,fontWeight:800,color:C.accent,fontFamily:FD}}>{s.v}</div>
               <div style={{fontSize:10,color:C.muted,fontFamily:FB}}>{s.l}</div>

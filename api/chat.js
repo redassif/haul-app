@@ -85,8 +85,12 @@ ITEMS: [{"id": 1, "name": "...", "brand": "...", "price": 89.99, "color": "#8B73
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
+        // Bumped from 1200 — long catalogs + 2-3 sentences of prose +
+        // structured ITEMS JSON regularly hit the cap, leaving a truncated
+        // array that the regex below couldn't parse and that leaked into
+        // the user-visible text.
         model: "claude-sonnet-4-20250514",
-        max_tokens: 1200,
+        max_tokens: 2000,
         system: systemPrompt,
         messages,
       }),
@@ -104,16 +108,24 @@ ITEMS: [{"id": 1, "name": "...", "brand": "...", "price": 89.99, "color": "#8B73
 
     const fullText = data.content[0].text;
 
-    // Extract trailing ITEMS: JSON. Anchored to end-of-string to avoid
-    // picking up example JSON inside the model's prose.
+    // Strip the ITEMS: section from the user-visible prose unconditionally
+    // — even if the JSON is truncated or malformed (max_tokens hit), we
+    // never want raw "[{\"id\":...}" leaking into the chat bubble.
+    // Then optionally parse the JSON if it looks complete.
     let items = [];
     let text = fullText;
-    const itemsMatch = fullText.match(/ITEMS:\s*(\[[\s\S]*\])\s*$/);
-    if (itemsMatch) {
-      try {
-        items = JSON.parse(itemsMatch[1]);
-        text = fullText.replace(/ITEMS:\s*\[[\s\S]*\]\s*$/, "").trim();
-      } catch { /* leave text intact on parse failure */ }
+    const itemsIdx = fullText.indexOf("ITEMS:");
+    if (itemsIdx >= 0) {
+      text = fullText.slice(0, itemsIdx).trim();
+      const remainder = fullText.slice(itemsIdx);
+      const itemsMatch = remainder.match(/ITEMS:\s*(\[[\s\S]*\])\s*\.?\s*$/);
+      if (itemsMatch) {
+        try {
+          items = JSON.parse(itemsMatch[1]);
+        } catch {
+          /* truncated/malformed — text is still clean, items stays empty */
+        }
+      }
     }
 
     return res.status(200).json({ text, items });
