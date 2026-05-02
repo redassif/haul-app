@@ -48,7 +48,7 @@ const FIT_LENGTH_LABELS = {crop:'crop',waist:'waist',hip:'hip',mid_thigh:'mid-th
 const FIT_STYLES = ['slim','regular','relaxed','oversized'];
 const FIT_SIZES = ['XXS','XS','S','M','L','XL','XXL'];
 const FIT_BUILDS = ['slim','mid','curvy'];
-const FIT_LEN_EXCLUDED = new Set(['shoes','accessory','bottom']);
+const FIT_LEN_EXCLUDED = new Set(['shoes','accessory']);
 const FIT_STYLE_EXCLUDED = new Set(['shoes','accessory']);
 const _fitIdx=(a,v)=>{const i=a.indexOf(v);return i>=0?i:null;};
 const _fitClamp=(i,a,b)=>Math.max(a,Math.min(b,i));
@@ -1469,7 +1469,7 @@ function PostHaulScreen({user, onBack, onPosted, editingHaul=null}){
                     </select>
                   </div>
                 )}
-                {item.category && !["shoes","accessory","bottom"].includes(item.category) && (
+                {item.category && !["shoes","accessory"].includes(item.category) && (
                   <div style={{flex:"1 1 calc(33% - 6px)"}}>
                     <div style={{fontSize:10,color:C.muted,fontFamily:FB,marginBottom:3}}>Length on you</div>
                     <select value={item.length_on_creator} onChange={e=>updateItem(item.id,"length_on_creator",e.target.value)}

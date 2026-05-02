@@ -38,7 +38,9 @@ export const SIZES = ['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL'];
 export const BUILDS = ['slim', 'mid', 'curvy'];
 
 // Categories where length projection does NOT apply.
-const LENGTH_EXCLUDED_CATEGORIES = new Set(['shoes', 'accessory', 'bottom']);
+// Bottoms (pants, skirts, shorts) DO have a length-on-body (mini, knee,
+// midi, maxi) so they're included.
+const LENGTH_EXCLUDED_CATEGORIES = new Set(['shoes', 'accessory']);
 
 // Categories where fit_style projection does NOT apply (shoes don't
 // have a meaningful slim/relaxed/oversized read on the wearer's build).
