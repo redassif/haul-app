@@ -172,7 +172,8 @@ function AuthModal({onClose, onSuccess, reason}){
   const reasonText={
     buy:"Sign in to complete your purchase",
     post:"Sign in to post a haul as a creator",
-    stylist:"Sign in to use the AI Stylist"
+    stylist:"Sign in to use the AI Stylist",
+    view:"Sign in to view this haul"
   }[reason]||"Sign in to continue";
 
   const handleSubmit=async()=>{
@@ -288,7 +289,7 @@ function FeedScreen({onOpen,onSnap,onProfile,onAuthRequired,onPostHaul}){
         {hauls.map(h=>{
           const total=h.items.filter(i=>i.checked).reduce((s,i)=>s+i.price,0);
           return(
-            <div key={h.id} onClick={()=>onOpen(h)} style={{background:C.card,borderRadius:20,overflow:"hidden",border:`1px solid ${C.border}`,marginBottom:18,boxShadow:"0 4px 24px rgba(26,18,9,0.06)",cursor:"pointer"}}>
+            <div key={h.id} onClick={()=>onAuthRequired("view",()=>onOpen(h))} style={{background:C.card,borderRadius:20,overflow:"hidden",border:`1px solid ${C.border}`,marginBottom:18,boxShadow:"0 4px 24px rgba(26,18,9,0.06)",cursor:"pointer"}}>
               <div style={{height:190,background:h.bg,display:"flex",alignItems:"center",justifyContent:"center",position:"relative",overflow:"hidden"}}>
                 {h.video_url
                   ? <video src={h.video_url} style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"center top",position:"absolute",inset:0}} autoPlay muted loop playsInline/>
