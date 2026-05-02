@@ -294,10 +294,6 @@ function FeedScreen({onOpen,onSnap,onProfile,onAuthRequired,onPostHaul}){
                   ? <video src={h.video_url} style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"center top",position:"absolute",inset:0}} autoPlay muted loop playsInline/>
                   : <div style={{fontSize:60,opacity:0.5}}>{h.thumb}</div>
                 }
-                <div style={{position:"absolute",bottom:10,left:10,right:10,display:"flex",justifyContent:"space-between"}}>
-                  <span style={{fontSize:11,color:"white",fontFamily:FB,fontWeight:600,background:"rgba(0,0,0,0.4)",padding:"3px 8px",borderRadius:20}}>▶ {h.views}</span>
-                  <span style={{fontSize:11,color:"white",fontFamily:FB,fontWeight:600,background:"rgba(0,0,0,0.4)",padding:"3px 8px",borderRadius:20}}>♥ {h.likes}</span>
-                </div>
                 {h.verified&&<div style={{position:"absolute",top:10,right:10,background:C.accent,borderRadius:20,padding:"3px 10px",fontSize:11,color:"white",fontFamily:FB,fontWeight:700}}>✓ Verified</div>}
               </div>
               <div style={{padding:14}}>
@@ -401,7 +397,6 @@ function DetailScreen({haul,onBack,onCheckout}){
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
           <Av l={haul.av} c={haul.avc}/>
           <div style={{flex:1}}><div style={{fontWeight:700,fontSize:13,color:C.dark,fontFamily:FB}}>{haul.creator}</div><div style={{fontSize:11,color:C.muted,fontFamily:FB}}>{haul.handle}</div></div>
-          <div style={{fontSize:11,color:C.muted,fontFamily:FB}}>♥ {haul.likes}</div>
         </div>
         <div style={{fontSize:18,fontWeight:800,color:C.dark,fontFamily:FD,marginBottom:4,lineHeight:1.3}}>{haul.title}</div>
         <div style={{fontSize:12,color:C.muted,fontFamily:FB,marginBottom:14}}>Select the pieces you want — or grab the full look.</div>
@@ -1581,7 +1576,7 @@ function MyHaulsScreen({user, onEdit}){
                     }
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontWeight:700,fontSize:14,color:C.dark,fontFamily:FD,fontStyle:"italic",marginBottom:4,lineHeight:1.25,overflow:"hidden",textOverflow:"ellipsis",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{h.title||"Untitled"}</div>
-                      <div style={{fontSize:11,color:C.muted,fontFamily:FB}}>{itemCount} item{itemCount===1?"":"s"} · {h.views||0} views</div>
+                      <div style={{fontSize:11,color:C.muted,fontFamily:FB}}>{itemCount} item{itemCount===1?"":"s"}</div>
                     </div>
                   </div>
                   <div style={{display:"flex",borderTop:`1px solid ${C.border}`}}>
