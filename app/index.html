@@ -29,7 +29,6 @@ const supabase = window.supabase.createClient(
 const C = {bg:"#FAFAFA",dark:"#141414",card:"#FFFFFF",accent:"#8B2635",accentLight:"#8B263512",muted:"#6B6B6B",border:"#E8E8E8",tag:"#F2F0ED"};
 const FD="'Libre Baskerville',serif", FB="'Libre Baskerville',serif", FBtn="'DM Sans',sans-serif";
 
-// Hauls now loaded from Supabase — no hardcoded data
 const BG_GRADIENTS = [
   "linear-gradient(135deg,#F9E4D4,#F0D5C8)",
   "linear-gradient(135deg,#D4E8F9,#C8D5F0)",
@@ -41,8 +40,6 @@ const BG_GRADIENTS = [
 const AV_COLORS = ["#8B2635","#2D6A4F","#7B2D8B","#1A5276","#6E2F1A","#1A3A5C"];
 
 // --- Fit intelligence ---
-// Mirrors src/lib/fit.js. Inlined because this file uses in-browser Babel
-// and can't ESM-import. Keep in sync with the server-side module.
 const FIT_LENGTH_CATS = ['crop','waist','hip','mid_thigh','knee','midi','maxi'];
 const FIT_LENGTH_LABELS = {crop:'crop',waist:'waist',hip:'hip',mid_thigh:'mid-thigh',knee:'knee',midi:'midi',maxi:'ankle'};
 const FIT_STYLES = ['slim','regular','relaxed','oversized'];
@@ -79,7 +76,6 @@ function analyzeFit({creator={},user={},item={}}={}){
   return out;
 }
 
-// Human-readable notes derived from an analysis. Empty array = nothing to say.
 function fitNotes(analysis, creatorName){
   if(!analysis) return [];
   const out=[];
@@ -87,10 +83,6 @@ function fitNotes(analysis, creatorName){
     const dir = analysis.size.delta>0?'sizing up':'sizing down';
     out.push(`Consider ${dir} — ${creatorName||'creator'} wore ${analysis.size.creator} but you typically wear ${analysis.size.user}`);
   }
-  // Suppress the note when the projected user category clamps back to the
-  // same label as the creator's — happens at edge categories (crop / maxi)
-  // where shift_steps is non-zero but the result was floored/ceilinged.
-  // "Hits at crop on you (was crop on creator)" carries no information.
   if(analysis.length && analysis.length.on_user !== analysis.length.on_creator){
     const onUser = FIT_LENGTH_LABELS[analysis.length.on_user]||analysis.length.on_user;
     const onCreator = FIT_LENGTH_LABELS[analysis.length.on_creator]||analysis.length.on_creator;
@@ -138,12 +130,6 @@ function formatHaulForFeed(haul, items, creatorProfile){
   };
 }
 
-// Hauls and creator_profiles share creator_id (both FK to auth.users.id)
-// but there's no direct FK between them, so we can't do a Supabase nested
-// select. Fetch profiles separately and join in JS.
-// Supabase public URLs look like:
-// https://{project}.supabase.co/storage/v1/object/public/haul-videos/{path}
-// We need the path when deleting the underlying object.
 function storagePathFromVideoUrl(url){
   if(!url) return null;
   const m = url.match(/\/haul-videos\/(.+)$/);
@@ -283,7 +269,7 @@ function FeedScreen({onOpen,onSnap,onProfile,onAuthRequired,onPostHaul}){
     <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
       <div style={{padding:"16px 16px 0",flexShrink:0}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-          <div style={{fontSize:28,fontWeight:800,color:C.dark,fontFamily:FD,fontStyle:"italic",letterSpacing:-1,letterSpacing:-1}}>haul<span style={{color:C.accent}}>.</span></div>
+          <div style={{fontSize:28,fontWeight:800,color:C.dark,fontFamily:FD,fontStyle:"italic",letterSpacing:-1}}>haul<span style={{color:C.accent}}>.</span></div>
           <button onClick={onPostHaul} style={{padding:"7px 14px",borderRadius:20,background:C.accent,color:"white",border:"none",fontFamily:FBtn,fontWeight:700,fontSize:12,cursor:"pointer"}}>+ Post Haul</button>
         </div>
         <div style={{fontSize:11,color:C.muted,fontFamily:FB,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:12}}>Trending Hauls</div>
@@ -293,7 +279,7 @@ function FeedScreen({onOpen,onSnap,onProfile,onAuthRequired,onPostHaul}){
         {hauls.map(h=>{
           const total=h.items.filter(i=>i.checked).reduce((s,i)=>s+i.price,0);
           return(
-            <div key={h.id} onClick={()=>onAuthRequired("view",()=>onOpen(h))} style={{background:C.card,borderRadius:20,overflow:"hidden",border:`1px solid ${C.border}`,marginBottom:18,boxShadow:"0 4px 24px rgba(26,18,9,0.06)",cursor:"pointer"}}>
+            <div key={h.id} onClick={()=>onOpen(h)} style={{background:C.card,borderRadius:20,overflow:"hidden",border:`1px solid ${C.border}`,marginBottom:18,boxShadow:"0 4px 24px rgba(26,18,9,0.06)",cursor:"pointer"}}>
               <div style={{height:190,background:h.bg,display:"flex",alignItems:"center",justifyContent:"center",position:"relative",overflow:"hidden"}}>
                 {h.video_url
                   ? <video src={h.video_url} style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"center top",position:"absolute",inset:0}} autoPlay muted loop playsInline/>
@@ -316,8 +302,8 @@ function FeedScreen({onOpen,onSnap,onProfile,onAuthRequired,onPostHaul}){
                   {h.items.length>3&&<div style={{background:C.tag,borderRadius:20,padding:"4px 10px",fontSize:11,color:C.muted,fontFamily:FB}}>+{h.items.length-3} more</div>}
                 </div>
                 <div style={{display:"flex",gap:8}}>
-                  <button onClick={e=>{e.stopPropagation();onAuthRequired("buy",()=>onOpen(h));}} style={{flex:1,padding:10,borderRadius:12,background:C.accent,color:"white",border:"none",fontWeight:700,fontSize:12,fontFamily:FBtn,cursor:"pointer"}}>Buy Full Look · ${total.toFixed(0)}</button>
-                  <button onClick={e=>{e.stopPropagation();onAuthRequired("buy",()=>onOpen(h));}} style={{padding:"10px 12px",borderRadius:12,background:C.tag,color:C.dark,border:"none",fontWeight:600,fontSize:12,fontFamily:FB,cursor:"pointer"}}>Pick Items</button>
+                  <button onClick={e=>{e.stopPropagation();onOpen(h);}} style={{flex:1,padding:10,borderRadius:12,background:C.accent,color:"white",border:"none",fontWeight:700,fontSize:12,fontFamily:FBtn,cursor:"pointer"}}>Buy Full Look · ${total.toFixed(0)}</button>
+                  <button onClick={e=>{e.stopPropagation();onOpen(h);}} style={{padding:"10px 12px",borderRadius:12,background:C.tag,color:C.dark,border:"none",fontWeight:600,fontSize:12,fontFamily:FB,cursor:"pointer"}}>Pick Items</button>
                 </div>
               </div>
             </div>
@@ -337,8 +323,6 @@ function DetailScreen({haul,onBack,onCheckout}){
   const total=selected.reduce((s,i)=>s+i.price,0);
   const toggle=id=>setItems(items.map(i=>i.id===id?{...i,checked:!i.checked}:i));
 
-  // Fit intelligence: need the viewing user's profile to project the creator's
-  // wear onto them. Silent if they're not signed in or haven't set up fit.
   useEffect(()=>{
     (async()=>{
       const {data:{user}} = await supabase.auth.getUser();
@@ -416,8 +400,6 @@ function DetailScreen({haul,onBack,onCheckout}){
           </div>
         )}
         {/* Debug strip — kept commented for dev use, hidden in the live UI.
-            Uncomment to surface raw /api/product responses on the haul detail
-            page when troubleshooting Rye scrape issues.
         {!loadingPrices&&debugMsg&&(
           <div style={{background:"#FFF8E8",border:"1px solid #E8D080",borderRadius:12,padding:"8px 12px",marginBottom:12,fontSize:10,color:"#5A4800",fontFamily:FB,wordBreak:"break-all"}}>{debugMsg}</div>
         )}
@@ -513,9 +495,6 @@ function FitOnboarding({onSave, onSkip}){
   );
 }
 
-// Shown once per creator, the first time they tap "+ Post Haul" without
-// a creator_profiles row. Not skippable — without these fields the fit
-// intelligence for every haul they post will be null forever.
 function CreatorOnboarding({user, onSave, onCancel}){
   const defaultName = user.user_metadata?.full_name || user.email.split("@")[0];
   const defaultHandle = "@" + user.email.split("@")[0];
@@ -611,8 +590,7 @@ function SnapScreen({onBack, onCheckout}){
       }
     })();
   },[]);
-  // Flatten creator body onto each item so api/chat.js can read it directly
-  // and analyzeFit() works without schema awareness.
+
   const CATALOG=snapHauls.flatMap(h=>h.items.map(item=>({
     ...item,
     creator:h.creator,
@@ -669,7 +647,6 @@ function SnapScreen({onBack, onCheckout}){
 
   return(
     <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
-      {/* Header */}
       <div style={{padding:"14px 16px 10px",flexShrink:0,borderBottom:`1px solid ${C.border}`,background:C.bg}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <button onClick={onBack} style={{width:34,height:34,borderRadius:"50%",border:`1px solid ${C.border}`,background:C.tag,fontSize:15,cursor:"pointer",flexShrink:0}}>←</button>
@@ -685,7 +662,6 @@ function SnapScreen({onBack, onCheckout}){
         </div>
       </div>
 
-      {/* Messages */}
       <div ref={scrollRef} style={{flex:1,overflowY:"auto",padding:"14px 16px 14px",display:"flex",flexDirection:"column",gap:12}}>
         {messages.map((msg,mi)=>(
           <div key={mi}>
@@ -738,7 +714,6 @@ function SnapScreen({onBack, onCheckout}){
         )}
       </div>
 
-      {/* Suggestions */}
       {messages.length<=1&&(
         <div style={{padding:"0 16px 8px",flexShrink:0}}>
           <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:4}}>
@@ -751,7 +726,6 @@ function SnapScreen({onBack, onCheckout}){
         </div>
       )}
 
-      {/* Input */}
       <div style={{padding:"10px 16px 90px",flexShrink:0,background:C.bg,borderTop:`1px solid ${C.border}`}}>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
           <input
@@ -789,7 +763,7 @@ function Field({label,k,placeholder,half,buyer,setBuyer}){
 }
 
 function CheckoutScreen({items,total,onDone,onBack}){
-  const [stage,setStage]=useState("info"); // info → review → processing → done → error
+  const [stage,setStage]=useState("info");
   const [orders,setOrders]=useState([]);
   const [error,setError]=useState(null);
   const [buyer,setBuyer]=useState({firstName:"",lastName:"",email:"",phone:"",address1:"",address2:"",city:"",province:"",postalCode:"",country:"US"});
@@ -889,7 +863,6 @@ function CheckoutScreen({items,total,onDone,onBack}){
     </div>
   );
 
-  // Review stage
   return(
     <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
       <div style={{padding:"16px 16px 0",flexShrink:0}}>
@@ -942,8 +915,6 @@ function ProfileScreen({user, onSignOut, onUserUpdate}){
   const [loading,setLoading]=useState(false);
   const [success,setSuccess]=useState(null);
   const [error,setError]=useState(null);
-  // Real haul count from Supabase. null = still loading; render an em-dash
-  // until it lands so we don't briefly show "0" for someone who has hauls.
   const [haulCount,setHaulCount]=useState(null);
 
   useEffect(()=>{
@@ -980,11 +951,6 @@ function ProfileScreen({user, onSignOut, onUserUpdate}){
       if(error) throw error;
       onUserUpdate(data.user);
 
-      // Cascade the display-name change to creator_profiles AND every haul
-      // this creator owns. Without this, hauls.creator_name (a denormalized
-      // snapshot at post time) keeps the old name on the feed even though
-      // auth metadata has updated. Best-effort — auth update has already
-      // landed at this point; we don't unwind it if these fail.
       if(nameChanged){
         const trimmed = name.trim();
         const {error:profileError} = await supabase
@@ -1096,24 +1062,14 @@ function ProfileScreen({user, onSignOut, onUserUpdate}){
 }
 
 
-// editingHaul (optional): an existing haul to edit, including its haul_items.
-// When set, this component updates the haul row + replaces haul_items instead
-// of inserting a new haul. The existing video is preserved unless the user
-// explicitly removes it and uploads a new one.
 function PostHaulScreen({user, onBack, onPosted, editingHaul=null}){
   const isEdit = Boolean(editingHaul);
-  // validation: { status: 'idle'|'checking'|'valid'|'invalid', reason?, data?, validatedUrl? }
-  // validatedUrl tracks which URL was last checked so we don't re-validate on
-  // every blur if the link hasn't changed.
   const newItem=()=>({
     id:Date.now()+Math.random(),
     name:"",link:"",price:"",brand:"",
     category:"",fit_style:"",length_on_creator:"",
     validation:{status:"idle"},
   });
-  // On edit, prefilled items already have known-good data from the DB; mark
-  // them as valid up-front so the submit button isn't blocked. If the creator
-  // changes the URL, validation re-runs.
   const prefillItems = (editingHaul?.haul_items||[]).map(i=>({
     id: i.id,
     name: i.name||"",
@@ -1137,7 +1093,7 @@ function PostHaulScreen({user, onBack, onPosted, editingHaul=null}){
   const [items,setItems]=useState(prefillItems.length?prefillItems:[newItem()]);
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState(null);
-  const [stage,setStage]=useState("form"); // form | uploading | done
+  const [stage,setStage]=useState("form");
 
   const [creatorProfile,setCreatorProfile]=useState(null);
   const [profileLoading,setProfileLoading]=useState(true);
@@ -1159,16 +1115,12 @@ function PostHaulScreen({user, onBack, onPosted, editingHaul=null}){
   const updateItem=(id,field,val)=>setItems(prev=>prev.map(i=>{
     if(i.id!==id) return i;
     const next={...i,[field]:val};
-    // Editing the link invalidates any prior validation so the creator
-    // can't slip an unchecked URL through by retyping.
     if(field==="link" && val!==i.validation?.validatedUrl){
       next.validation={status:"idle"};
     }
     return next;
   }));
 
-  // Validate a link via /api/check-url. Idempotent — skips the network
-  // call if we already validated this exact URL on this item.
   const validateLink=async(itemId)=>{
     const item = items.find(i=>i.id===itemId);
     if(!item) return;
@@ -1184,8 +1136,6 @@ function PostHaulScreen({user, onBack, onPosted, editingHaul=null}){
         body:JSON.stringify({url:link}),
       });
       const result = await resp.json();
-      // Only update if the link hasn't changed since we kicked off — the
-      // creator may have retyped during the in-flight call.
       setItems(prev=>prev.map(i=>{
         if(i.id!==itemId || i.link.trim()!==link) return i;
         return {...i, validation:{
@@ -1218,8 +1168,6 @@ function PostHaulScreen({user, onBack, onPosted, editingHaul=null}){
     const validItems=items.filter(i=>i.link.trim());
     if(validItems.length===0) return setError("Add at least one product link.");
 
-    // Every link must have passed validation. Items in 'checking' or 'idle'
-    // also block — we need to know the URL is valid before posting.
     const blockingItems = validItems.filter(i=>i.validation?.status!=="valid");
     if(blockingItems.length>0){
       const checking = blockingItems.some(i=>i.validation?.status==="checking");
@@ -1232,9 +1180,6 @@ function PostHaulScreen({user, onBack, onPosted, editingHaul=null}){
     setError(null);
 
     try{
-      // 1. Upload the new video (if one was picked). In edit mode, also
-      // delete the old object so we don't orphan storage. We upload first;
-      // only on success do we touch the old blob — safer if upload fails.
       let videoUrl = existingVideoUrl;
       let newUploadPath = null;
       if(videoFile){
@@ -1252,8 +1197,6 @@ function PostHaulScreen({user, onBack, onPosted, editingHaul=null}){
 
       let haul;
       if(isEdit){
-        // 2a. Update the existing haul row. Leave views/likes alone —
-        // editing metadata shouldn't reset engagement counts.
         const updates = {title:title.trim()};
         if(videoFile) updates.video_url = videoUrl;
         const {data,error:updateError} = await supabase
@@ -1265,18 +1208,12 @@ function PostHaulScreen({user, onBack, onPosted, editingHaul=null}){
         if(updateError) throw updateError;
         haul = data;
 
-        // 2b. Replace haul_items entirely. Simpler than diffing — diffing
-        // would pay off only if other tables FK into haul_items (cart lines,
-        // orders). If that gets added later, move to a proper upsert/diff.
         const {error:delItemsError} = await supabase
           .from("haul_items")
           .delete()
           .eq("haul_id", editingHaul.id);
         if(delItemsError) throw delItemsError;
 
-        // 2c. If the video changed, delete the old blob. Best-effort — a
-        // storage leak is strictly worse than a failed save, so we don't
-        // throw if this fails.
         if(videoFile && editingHaul.video_url){
           const oldPath = storagePathFromVideoUrl(editingHaul.video_url);
           if(oldPath){
@@ -1285,9 +1222,6 @@ function PostHaulScreen({user, onBack, onPosted, editingHaul=null}){
           }
         }
       } else {
-        // 2. Insert new haul. creator_name/handle are denormalized snapshots
-        // at post time — pulled from the creator's profile so renames on the
-        // profile don't retroactively rewrite old hauls.
         const {data,error:haulError} = await supabase
           .from("hauls")
           .insert({
@@ -1305,10 +1239,6 @@ function PostHaulScreen({user, onBack, onPosted, editingHaul=null}){
         haul = data;
       }
 
-      // 3. Insert items. Creator supplies only link + fit tags; name/brand/
-      // price come from the /api/check-url validation that ran when they
-      // pasted the link. Only fields Rye actually returned are populated —
-      // missing ones stay null rather than getting fabricated defaults.
       const itemRows = validItems.map(i=>({
         haul_id: haul.id,
         link: i.link.trim(),
@@ -1324,10 +1254,6 @@ function PostHaulScreen({user, onBack, onPosted, editingHaul=null}){
         .insert(itemRows)
         .select();
       if(itemsError) throw itemsError;
-
-      // (No /api/product fire-and-forget here anymore — check-url already
-      // gave us the data when the link was pasted, and the row was inserted
-      // with the Rye-returned values directly.)
 
       setStage("done");
     }catch(err){
@@ -1345,8 +1271,6 @@ function PostHaulScreen({user, onBack, onPosted, editingHaul=null}){
     </div>
   );
 
-  // Creator profile is required for a first post. On edit, the haul already
-  // exists, so a profile must already exist — skip the gate.
   if(!isEdit && !creatorProfile) return(
     <CreatorOnboarding
       user={user}
@@ -1387,7 +1311,6 @@ function PostHaulScreen({user, onBack, onPosted, editingHaul=null}){
 
       <div style={{flex:1,overflowY:"auto",padding:"0 16px 120px"}}>
 
-        {/* Video Upload */}
         <div style={{marginBottom:16}}>
           <div style={{fontSize:11,fontWeight:700,color:C.dark,fontFamily:FB,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Video</div>
           <label style={{display:"block",cursor:"pointer"}}>
@@ -1411,14 +1334,12 @@ function PostHaulScreen({user, onBack, onPosted, editingHaul=null}){
           }
         </div>
 
-        {/* Title */}
         <div style={{marginBottom:16}}>
           <div style={{fontSize:11,fontWeight:700,color:C.dark,fontFamily:FB,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Title</div>
           <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="e.g. Summer Office Looks 💼"
             style={{width:"100%",padding:"11px 14px",borderRadius:10,border:`1px solid ${C.border}`,background:C.card,fontSize:13,fontFamily:FB,color:C.dark,outline:"none"}}/>
         </div>
 
-        {/* Items */}
         <div style={{marginBottom:12}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
             <div style={{fontSize:11,fontWeight:700,color:C.dark,fontFamily:FB,textTransform:"uppercase",letterSpacing:1}}>Items in this haul</div>
@@ -1447,7 +1368,6 @@ function PostHaulScreen({user, onBack, onPosted, editingHaul=null}){
                       }`,
                       background:C.bg,fontSize:12,fontFamily:FB,color:C.dark,outline:"none"
                     }}/>
-                  {/* Validation feedback — one of four states. */}
                   {item.validation?.status==="checking" && (
                     <div style={{fontSize:10,color:C.muted,fontFamily:FB,marginTop:4,display:"flex",alignItems:"center",gap:6}}>
                       <div style={{width:6,height:6,borderRadius:"50%",background:C.muted,animation:"bounce 0.8s ease-in-out infinite alternate"}}/>
@@ -1505,9 +1425,6 @@ function PostHaulScreen({user, onBack, onPosted, editingHaul=null}){
                     <select value={item.length_on_creator} onChange={e=>updateItem(item.id,"length_on_creator",e.target.value)}
                       style={{width:"100%",padding:"8px 10px",borderRadius:8,border:`1px solid ${C.border}`,background:C.bg,fontSize:12,fontFamily:FB,color:C.dark,outline:"none"}}>
                       <option value="">—</option>
-                      {/* Crop and Waist describe hems above where a bottom
-                          starts, so they only make sense for tops/dresses/
-                          outerwear. Hide them when category=bottom. */}
                       {item.category!=="bottom" && <option value="crop">Crop</option>}
                       {item.category!=="bottom" && <option value="waist">Waist</option>}
                       <option value="hip">Hip</option>
@@ -1528,9 +1445,6 @@ function PostHaulScreen({user, onBack, onPosted, editingHaul=null}){
 
       <div style={{position:"absolute",bottom:0,left:0,right:0,background:C.bg,borderTop:`1px solid ${C.border}`,padding:"14px 16px 28px"}}>
         {(()=>{
-          // Submit is allowed only when every item with a link has passed
-          // validation. Items still 'checking', 'invalid', or 'idle' (not
-          // yet blurred) keep the button disabled.
           const linksReady = items.filter(i=>i.link.trim())
             .every(i=>i.validation?.status==="valid");
           const canSubmit = !loading && linksReady;
@@ -1580,9 +1494,6 @@ function MyHaulsScreen({user, onEdit}){
     setDeletingId(haul.id);
     setError(null);
     try{
-      // haul_items first (in case no ON DELETE CASCADE FK), then hauls row,
-      // then the video blob. Order matters: if the haul row delete fails,
-      // we shouldn't have already pulled the video from storage.
       const {error:itemsErr} = await supabase.from("haul_items").delete().eq("haul_id", haul.id);
       if(itemsErr) throw itemsErr;
       const {error:haulErr} = await supabase.from("hauls").delete().eq("id", haul.id);
@@ -1590,7 +1501,6 @@ function MyHaulsScreen({user, onEdit}){
       if(haul.video_url){
         const p = storagePathFromVideoUrl(haul.video_url);
         if(p){
-          // Best-effort; storage leak is survivable, row deletion already landed.
           supabase.storage.from("haul-videos").remove([p])
             .catch(e=>console.warn("Video cleanup failed:", e.message));
         }
@@ -1673,13 +1583,10 @@ function App(){
   const [haul,setHaul]=useState(null);
   const [checkout,setCheckout]=useState(null);
   const [user,setUser]=useState(null);
-  const [authModal,setAuthModal]=useState(null); // null | "buy" | "post" | "stylist"
+  const [authModal,setAuthModal]=useState(null);
   const [postHaul,setPostHaul]=useState(false);
   const [editingHaul,setEditingHaul]=useState(null);
   const [pendingAction,setPendingAction]=useState(null);
-  // Hide nav whenever a screen has its own bottom bar (DetailScreen's
-  // checkout pill, CheckoutScreen, post/edit forms) so they don't stack
-  // on top of each other.
   const showNav=(screen==="feed"||screen==="snap"||screen==="myhauls"||screen==="profile")&&!postHaul&&!editingHaul&&!haul&&screen!=="checkout";
 
   useEffect(()=>{
@@ -1704,9 +1611,8 @@ function App(){
     if(pendingAction){ pendingAction(); setPendingAction(null); }
   };
 
+  // Browse experience is open. Only Post Haul still gates auth.
   const handleNavChange=(tab)=>{
-    if(tab==="snap"){ requireAuth("stylist",()=>setScreen("snap")); return; }
-    if(tab==="myhauls"){ requireAuth("post",()=>setScreen("myhauls")); return; }
     setScreen(tab);
   };
 
@@ -1718,11 +1624,18 @@ function App(){
       </div>
       <div style={{flex:1,position:"relative",overflow:"hidden"}}>
         {screen==="feed"&&!haul&&!postHaul&&<FeedScreen onOpen={h=>{setHaul(h);}} onSnap={()=>handleNavChange("snap")} onProfile={()=>setScreen("profile")} onAuthRequired={(r,a)=>requireAuth(r,a)} onPostHaul={()=>requireAuth("post",()=>setPostHaul(true))}/>}
-        {screen==="feed"&&haul&&!checkout&&!postHaul&&<DetailScreen haul={haul} onBack={()=>setHaul(null)} onCheckout={(items,total)=>requireAuth("buy",()=>{setCheckout({items,total});setScreen("checkout");})}/>}
+        {screen==="feed"&&haul&&!checkout&&!postHaul&&<DetailScreen haul={haul} onBack={()=>setHaul(null)} onCheckout={(items,total)=>{setCheckout({items,total});setScreen("checkout");}}/>}
         {screen==="checkout"&&checkout&&<CheckoutScreen items={checkout.items} total={checkout.total} onDone={()=>{setCheckout(null);setHaul(null);setScreen("feed");}} onBack={()=>{setCheckout(null);setScreen("feed");}}/>}
-        {screen==="snap"&&<SnapScreen onBack={()=>setScreen("feed")} onCheckout={(items,total)=>requireAuth("buy",()=>{setCheckout({items,total});setScreen("checkout");})}/>}
+        {screen==="snap"&&<SnapScreen onBack={()=>setScreen("feed")} onCheckout={(items,total)=>{setCheckout({items,total});setScreen("checkout");}}/>}
         {screen==="profile"&&<ProfileScreen user={user} onSignOut={async()=>{await supabase.auth.signOut();setUser(null);setScreen("feed");}} onUserUpdate={(u)=>setUser(u)}/> }
-        {screen==="myhauls"&&user&&!editingHaul&&<MyHaulsScreen user={user} onEdit={(h)=>setEditingHaul(h)}/>}
+        {screen==="myhauls"&&!editingHaul&&(user
+          ? <MyHaulsScreen user={user} onEdit={(h)=>setEditingHaul(h)}/>
+          : <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",padding:32,textAlign:"center"}}>
+              <div style={{fontSize:48,marginBottom:16}}>🎥</div>
+              <div style={{fontSize:20,fontWeight:700,fontStyle:"italic",color:C.dark,fontFamily:FD,marginBottom:8}}>Your Hauls</div>
+              <div style={{fontSize:13,color:C.muted,fontFamily:FB,lineHeight:1.7}}>Sign in to manage hauls you've posted.</div>
+            </div>
+        )}
         {postHaul&&<PostHaulScreen user={user} onBack={()=>setPostHaul(false)} onPosted={()=>{setPostHaul(false);setScreen("feed");}}/>}
         {editingHaul&&<PostHaulScreen user={user} editingHaul={editingHaul} onBack={()=>setEditingHaul(null)} onPosted={()=>{setEditingHaul(null);setScreen("myhauls");}}/>}
       </div>
