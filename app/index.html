@@ -962,8 +962,9 @@ function ProfileScreen({user, onSignOut, onUserUpdate}){
     setError(null);
     setSuccess(null);
     try{
+      const nameChanged = name !== user.user_metadata?.full_name;
       const updates={};
-      if(name!==user.user_metadata?.full_name) updates.data={full_name:name};
+      if(nameChanged) updates.data={full_name:name};
       if(email!==user.email) updates.email=email;
       if(newPassword){
         if(newPassword!==confirmPassword) throw new Error("Passwords don't match");
@@ -974,6 +975,27 @@ function ProfileScreen({user, onSignOut, onUserUpdate}){
       const{data,error}=await supabase.auth.updateUser(updates);
       if(error) throw error;
       onUserUpdate(data.user);
+
+      // Cascade the display-name change to creator_profiles AND every haul
+      // this creator owns. Without this, hauls.creator_name (a denormalized
+      // snapshot at post time) keeps the old name on the feed even though
+      // auth metadata has updated. Best-effort — auth update has already
+      // landed at this point; we don't unwind it if these fail.
+      if(nameChanged){
+        const trimmed = name.trim();
+        const {error:profileError} = await supabase
+          .from("creator_profiles")
+          .update({name: trimmed})
+          .eq("creator_id", user.id);
+        if(profileError) console.warn("creator_profiles name cascade failed:", profileError.message);
+
+        const {error:haulsError} = await supabase
+          .from("hauls")
+          .update({creator_name: trimmed})
+          .eq("creator_id", user.id);
+        if(haulsError) console.warn("hauls creator_name cascade failed:", haulsError.message);
+      }
+
       setSuccess(email!==user.email?"Check your new email for a confirmation link.":"Profile updated successfully.");
       setNewPassword("");
       setConfirmPassword("");
