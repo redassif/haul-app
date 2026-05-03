@@ -784,7 +784,7 @@ function Field({label,k,placeholder,half,buyer,setBuyer}){
   );
 }
 
-function CheckoutScreen({items,total,onDone}){
+function CheckoutScreen({items,total,onDone,onBack}){
   const [stage,setStage]=useState("info"); // info → review → processing → done → error
   const [orders,setOrders]=useState([]);
   const [error,setError]=useState(null);
@@ -857,8 +857,11 @@ function CheckoutScreen({items,total,onDone}){
   if(stage==="info") return(
     <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
       <div style={{padding:"16px 16px 0",flexShrink:0}}>
-        <div style={{fontSize:17,fontWeight:800,color:C.dark,fontFamily:FD,marginBottom:4}}>Shipping Info</div>
-        <div style={{fontSize:12,color:C.muted,fontFamily:FB,marginBottom:14}}>Where should we ship your order?</div>
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:4}}>
+          <button onClick={onBack||onDone} style={{width:32,height:32,borderRadius:"50%",background:C.tag,border:"none",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>←</button>
+          <div style={{fontSize:17,fontWeight:800,color:C.dark,fontFamily:FD}}>Shipping Info</div>
+        </div>
+        <div style={{fontSize:12,color:C.muted,fontFamily:FB,marginBottom:14,paddingLeft:44}}>Where should we ship your order?</div>
       </div>
       <div style={{flex:1,overflowY:"auto",padding:"0 16px 140px"}}>
         <div style={{display:"flex",flexWrap:"wrap",gap:"0 10px"}}>
@@ -1687,7 +1690,7 @@ function App(){
       <div style={{flex:1,position:"relative",overflow:"hidden"}}>
         {screen==="feed"&&!haul&&!postHaul&&<FeedScreen onOpen={h=>{setHaul(h);}} onSnap={()=>handleNavChange("snap")} onProfile={()=>setScreen("profile")} onAuthRequired={(r,a)=>requireAuth(r,a)} onPostHaul={()=>requireAuth("post",()=>setPostHaul(true))}/>}
         {screen==="feed"&&haul&&!checkout&&!postHaul&&<DetailScreen haul={haul} onBack={()=>setHaul(null)} onCheckout={(items,total)=>requireAuth("buy",()=>{setCheckout({items,total});setScreen("checkout");})}/>}
-        {screen==="checkout"&&checkout&&<CheckoutScreen items={checkout.items} total={checkout.total} onDone={()=>{setCheckout(null);setHaul(null);setScreen("feed");}}/>}
+        {screen==="checkout"&&checkout&&<CheckoutScreen items={checkout.items} total={checkout.total} onDone={()=>{setCheckout(null);setHaul(null);setScreen("feed");}} onBack={()=>{setCheckout(null);setScreen("feed");}}/>}
         {screen==="snap"&&<SnapScreen onBack={()=>setScreen("feed")} onCheckout={(items,total)=>requireAuth("buy",()=>{setCheckout({items,total});setScreen("checkout");})}/>}
         {screen==="profile"&&<ProfileScreen user={user} onSignOut={async()=>{await supabase.auth.signOut();setUser(null);setScreen("feed");}} onUserUpdate={(u)=>setUser(u)}/> }
         {screen==="myhauls"&&user&&!editingHaul&&<MyHaulsScreen user={user} onEdit={(h)=>setEditingHaul(h)}/>}
