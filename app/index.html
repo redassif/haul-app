@@ -87,7 +87,11 @@ function fitNotes(analysis, creatorName){
     const dir = analysis.size.delta>0?'sizing up':'sizing down';
     out.push(`Consider ${dir} — ${creatorName||'creator'} wore ${analysis.size.creator} but you typically wear ${analysis.size.user}`);
   }
-  if(analysis.length && analysis.length.shift_steps!==0){
+  // Suppress the note when the projected user category clamps back to the
+  // same label as the creator's — happens at edge categories (crop / maxi)
+  // where shift_steps is non-zero but the result was floored/ceilinged.
+  // "Hits at crop on you (was crop on creator)" carries no information.
+  if(analysis.length && analysis.length.on_user !== analysis.length.on_creator){
     const onUser = FIT_LENGTH_LABELS[analysis.length.on_user]||analysis.length.on_user;
     const onCreator = FIT_LENGTH_LABELS[analysis.length.on_creator]||analysis.length.on_creator;
     out.push(`Hits at ${onUser} on you (was ${onCreator} on ${creatorName||'creator'})`);
