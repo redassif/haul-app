@@ -40,11 +40,75 @@ const BG_GRADIENTS = [
 ];
 const AV_COLORS = ["#8B2635","#2D6A4F","#7B2D8B","#1A5276","#6E2F1A","#1A3A5C"];
 
-function formatHaulForFeed(haul, items){
+// --- Fit intelligence ---
+// Mirrors src/lib/fit.js. Inlined because this file uses in-browser Babel
+// and can't ESM-import. Keep in sync with the server-side module.
+const FIT_LENGTH_CATS = ['crop','waist','hip','mid_thigh','knee','midi','maxi'];
+const FIT_LENGTH_LABELS = {crop:'crop',waist:'waist',hip:'hip',mid_thigh:'mid-thigh',knee:'knee',midi:'midi',maxi:'ankle'};
+const FIT_STYLES = ['slim','regular','relaxed','oversized'];
+const FIT_SIZES = ['XXS','XS','S','M','L','XL','XXL'];
+const FIT_BUILDS = ['slim','mid','curvy'];
+const FIT_LEN_EXCLUDED = new Set(['shoes','accessory']);
+const FIT_STYLE_EXCLUDED = new Set(['shoes','accessory']);
+const _fitIdx=(a,v)=>{const i=a.indexOf(v);return i>=0?i:null;};
+const _fitClamp=(i,a,b)=>Math.max(a,Math.min(b,i));
+
+function analyzeFit({creator={},user={},item={}}={}){
+  const out={length:null,fit_style:null,size:null,flags:[]};
+  if(item.length_on_creator && !FIT_LEN_EXCLUDED.has(item.category)){
+    const i=_fitIdx(FIT_LENGTH_CATS,item.length_on_creator);
+    if(i!==null && creator.height_cm && user.height_cm){
+      const diff=creator.height_cm-user.height_cm, shift=Math.round(diff/10);
+      const newIdx=_fitClamp(i+shift,0,FIT_LENGTH_CATS.length-1);
+      out.length={on_creator:item.length_on_creator,on_user:FIT_LENGTH_CATS[newIdx],shift_steps:shift,height_diff_cm:diff};
+      if(Math.abs(shift)>=2) out.flags.push({kind:'length_mismatch',message:`Length shifts ${Math.abs(shift)} categories ${shift>0?'longer':'shorter'} on you.`});
+    }
+  }
+  if(item.fit_style && creator.build && user.build && !FIT_STYLE_EXCLUDED.has(item.category)){
+    const cb=_fitIdx(FIT_BUILDS,creator.build), ub=_fitIdx(FIT_BUILDS,user.build), si=_fitIdx(FIT_STYLES,item.fit_style);
+    if(cb!==null && ub!==null && si!==null){
+      const bd=ub-cb, adj=_fitClamp(si-bd,0,FIT_STYLES.length-1);
+      out.fit_style={on_creator:item.fit_style,on_user:FIT_STYLES[adj],build_diff:bd,adjusted:adj!==si};
+      if(Math.abs(bd)>=2) out.flags.push({kind:'build_mismatch',message:`Cut was styled on a very different build — will read quite differently.`});
+    }
+  }
+  if(creator.usual_size && user.usual_size){
+    const c=_fitIdx(FIT_SIZES,creator.usual_size), u=_fitIdx(FIT_SIZES,user.usual_size);
+    if(c!==null && u!==null) out.size={delta:u-c,creator:creator.usual_size,user:user.usual_size};
+  }
+  return out;
+}
+
+// Human-readable notes derived from an analysis. Empty array = nothing to say.
+function fitNotes(analysis, creatorName){
+  if(!analysis) return [];
+  const out=[];
+  if(analysis.size && analysis.size.delta!==0){
+    const dir = analysis.size.delta>0?'sizing up':'sizing down';
+    out.push(`Consider ${dir} — ${creatorName||'creator'} wore ${analysis.size.creator} but you typically wear ${analysis.size.user}`);
+  }
+  // Suppress the note when the projected user category clamps back to the
+  // same label as the creator's — happens at edge categories (crop / maxi)
+  // where shift_steps is non-zero but the result was floored/ceilinged.
+  // "Hits at crop on you (was crop on creator)" carries no information.
+  if(analysis.length && analysis.length.on_user !== analysis.length.on_creator){
+    const onUser = FIT_LENGTH_LABELS[analysis.length.on_user]||analysis.length.on_user;
+    const onCreator = FIT_LENGTH_LABELS[analysis.length.on_creator]||analysis.length.on_creator;
+    out.push(`Hits at ${onUser} on you (was ${onCreator} on ${creatorName||'creator'})`);
+  }
+  if(analysis.fit_style && analysis.fit_style.adjusted){
+    out.push(`Will read ${analysis.fit_style.on_user} on your build`);
+  }
+  for(const f of (analysis.flags||[])) out.push(f.message);
+  return out;
+}
+
+function formatHaulForFeed(haul, items, creatorProfile){
   const initial = (haul.creator_name||"?")[0].toUpperCase();
   const idx = haul.id.charCodeAt(0) % BG_GRADIENTS.length;
   return {
     id: haul.id,
+    creator_id: haul.creator_id,
     creator: haul.creator_name||"Creator",
     handle: haul.creator_handle||"@user",
     av: initial,
@@ -55,6 +119,10 @@ function formatHaulForFeed(haul, items){
     thumb: "🎬",
     bg: BG_GRADIENTS[idx],
     video_url: haul.video_url||null,
+    verified: creatorProfile?.verified===true,
+    creator_height_cm: creatorProfile?.height_cm||null,
+    creator_build: creatorProfile?.build||null,
+    creator_usual_size: creatorProfile?.usual_size||null,
     items: (items||[]).map(i=>({
       id: i.id,
       name: i.name,
@@ -63,8 +131,31 @@ function formatHaulForFeed(haul, items){
       color: "#888888",
       checked: true,
       link: i.link||null,
+      category: i.category||null,
+      fit_style: i.fit_style||null,
+      length_on_creator: i.length_on_creator||null,
     })),
   };
+}
+
+// Hauls and creator_profiles share creator_id (both FK to auth.users.id)
+// but there's no direct FK between them, so we can't do a Supabase nested
+// select. Fetch profiles separately and join in JS.
+// Supabase public URLs look like:
+// https://{project}.supabase.co/storage/v1/object/public/haul-videos/{path}
+// We need the path when deleting the underlying object.
+function storagePathFromVideoUrl(url){
+  if(!url) return null;
+  const m = url.match(/\/haul-videos\/(.+)$/);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+async function enrichHaulsWithCreatorProfiles(hauls){
+  const ids = [...new Set(hauls.map(h=>h.creator_id).filter(Boolean))];
+  if(ids.length===0) return hauls.map(h=>({...h, _creatorProfile:null}));
+  const {data} = await supabase.from("creator_profiles").select("*").in("creator_id", ids);
+  const byId = new Map((data||[]).map(p=>[p.creator_id, p]));
+  return hauls.map(h=>({...h, _creatorProfile: byId.get(h.creator_id)||null}));
 }
 
 function Av({l,c,s=36}){
@@ -85,7 +176,8 @@ function AuthModal({onClose, onSuccess, reason}){
   const reasonText={
     buy:"Sign in to complete your purchase",
     post:"Sign in to post a haul as a creator",
-    stylist:"Sign in to use the AI Stylist"
+    stylist:"Sign in to use the AI Stylist",
+    view:"Sign in to view this haul"
   }[reason]||"Sign in to continue";
 
   const handleSubmit=async()=>{
@@ -170,7 +262,8 @@ function FeedScreen({onOpen,onSnap,onProfile,onAuthRequired,onPostHaul}){
         .select("*, haul_items(*)")
         .order("created_at",{ascending:false});
       if(!error&&data){
-        setHauls(data.map(h=>formatHaulForFeed(h, h.haul_items)));
+        const enriched = await enrichHaulsWithCreatorProfiles(data);
+        setHauls(enriched.map(h=>formatHaulForFeed(h, h.haul_items, h._creatorProfile)));
       }
       setLoading(false);
     };
@@ -200,17 +293,13 @@ function FeedScreen({onOpen,onSnap,onProfile,onAuthRequired,onPostHaul}){
         {hauls.map(h=>{
           const total=h.items.filter(i=>i.checked).reduce((s,i)=>s+i.price,0);
           return(
-            <div key={h.id} onClick={()=>onOpen(h)} style={{background:C.card,borderRadius:20,overflow:"hidden",border:`1px solid ${C.border}`,marginBottom:18,boxShadow:"0 4px 24px rgba(26,18,9,0.06)",cursor:"pointer"}}>
+            <div key={h.id} onClick={()=>onAuthRequired("view",()=>onOpen(h))} style={{background:C.card,borderRadius:20,overflow:"hidden",border:`1px solid ${C.border}`,marginBottom:18,boxShadow:"0 4px 24px rgba(26,18,9,0.06)",cursor:"pointer"}}>
               <div style={{height:190,background:h.bg,display:"flex",alignItems:"center",justifyContent:"center",position:"relative",overflow:"hidden"}}>
                 {h.video_url
                   ? <video src={h.video_url} style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"center top",position:"absolute",inset:0}} autoPlay muted loop playsInline/>
                   : <div style={{fontSize:60,opacity:0.5}}>{h.thumb}</div>
                 }
-                <div style={{position:"absolute",bottom:10,left:10,right:10,display:"flex",justifyContent:"space-between"}}>
-                  <span style={{fontSize:11,color:"white",fontFamily:FB,fontWeight:600,background:"rgba(0,0,0,0.4)",padding:"3px 8px",borderRadius:20}}>▶ {h.views}</span>
-                  <span style={{fontSize:11,color:"white",fontFamily:FB,fontWeight:600,background:"rgba(0,0,0,0.4)",padding:"3px 8px",borderRadius:20}}>♥ {h.likes}</span>
-                </div>
-                <div style={{position:"absolute",top:10,right:10,background:C.accent,borderRadius:20,padding:"3px 10px",fontSize:11,color:"white",fontFamily:FB,fontWeight:700}}>✓ Verified</div>
+                {h.verified&&<div style={{position:"absolute",top:10,right:10,background:C.accent,borderRadius:20,padding:"3px 10px",fontSize:11,color:"white",fontFamily:FB,fontWeight:700}}>✓ Verified</div>}
               </div>
               <div style={{padding:14}}>
                 <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
@@ -243,9 +332,28 @@ function DetailScreen({haul,onBack,onCheckout}){
   const [items,setItems]=useState(haul.items);
   const [loadingPrices,setLoadingPrices]=useState(false);
   const [debugMsg,setDebugMsg]=useState(null);
+  const [userProfile,setUserProfile]=useState(null);
   const selected=items.filter(i=>i.checked);
   const total=selected.reduce((s,i)=>s+i.price,0);
   const toggle=id=>setItems(items.map(i=>i.id===id?{...i,checked:!i.checked}:i));
+
+  // Fit intelligence: need the viewing user's profile to project the creator's
+  // wear onto them. Silent if they're not signed in or haven't set up fit.
+  useEffect(()=>{
+    (async()=>{
+      const {data:{user}} = await supabase.auth.getUser();
+      if(!user) return;
+      const {data} = await supabase.from("user_profiles").select("*").eq("user_id",user.id).maybeSingle();
+      if(data && data.height_cm) setUserProfile(data);
+    })();
+  },[]);
+
+  const creatorForFit = {
+    height_cm: haul.creator_height_cm,
+    build: haul.creator_build,
+    usual_size: haul.creator_usual_size,
+  };
+  const hasCreatorFit = creatorForFit.height_cm || creatorForFit.build || creatorForFit.usual_size;
 
   React.useEffect(()=>{
     const itemsWithLinks=haul.items.filter(i=>i.link);
@@ -288,13 +396,12 @@ function DetailScreen({haul,onBack,onCheckout}){
           : <div style={{fontSize:64,opacity:0.4}}>{haul.thumb}</div>
         }
         <button onClick={onBack} style={{position:"absolute",top:16,left:16,width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,0.9)",border:"none",fontSize:16,cursor:"pointer"}}>←</button>
-        <div style={{position:"absolute",top:16,right:16,background:C.accent,borderRadius:20,padding:"3px 10px",fontSize:11,color:"white",fontFamily:FB,fontWeight:700}}>✓ Verified</div>
+        {haul.verified&&<div style={{position:"absolute",top:16,right:16,background:C.accent,borderRadius:20,padding:"3px 10px",fontSize:11,color:"white",fontFamily:FB,fontWeight:700}}>✓ Verified</div>}
       </div>
       <div style={{flex:1,overflowY:"auto",padding:"14px 16px 140px"}}>
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
           <Av l={haul.av} c={haul.avc}/>
           <div style={{flex:1}}><div style={{fontWeight:700,fontSize:13,color:C.dark,fontFamily:FB}}>{haul.creator}</div><div style={{fontSize:11,color:C.muted,fontFamily:FB}}>{haul.handle}</div></div>
-          <div style={{fontSize:11,color:C.muted,fontFamily:FB}}>♥ {haul.likes}</div>
         </div>
         <div style={{fontSize:18,fontWeight:800,color:C.dark,fontFamily:FD,marginBottom:4,lineHeight:1.3}}>{haul.title}</div>
         <div style={{fontSize:12,color:C.muted,fontFamily:FB,marginBottom:14}}>Select the pieces you want — or grab the full look.</div>
@@ -308,25 +415,45 @@ function DetailScreen({haul,onBack,onCheckout}){
             <div style={{fontSize:12,color:C.accent,fontFamily:FB,fontWeight:600}}>Fetching live prices...</div>
           </div>
         )}
+        {/* Debug strip — kept commented for dev use, hidden in the live UI.
+            Uncomment to surface raw /api/product responses on the haul detail
+            page when troubleshooting Rye scrape issues.
         {!loadingPrices&&debugMsg&&(
           <div style={{background:"#FFF8E8",border:"1px solid #E8D080",borderRadius:12,padding:"8px 12px",marginBottom:12,fontSize:10,color:"#5A4800",fontFamily:FB,wordBreak:"break-all"}}>{debugMsg}</div>
         )}
-        {items.map(item=>(
-          <div key={item.id} onClick={()=>toggle(item.id)} style={{display:"flex",alignItems:"center",gap:10,background:item.checked?C.accentLight:C.tag,border:`1.5px solid ${item.checked?C.accent:C.border}`,borderRadius:14,padding:12,marginBottom:8,cursor:"pointer"}}>
-            <div style={{width:20,height:20,borderRadius:5,border:`2px solid ${item.checked?C.accent:C.border}`,background:item.checked?C.accent:"white",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-              {item.checked&&<span style={{color:"white",fontSize:12,fontWeight:700}}>✓</span>}
+        */}
+        {items.map(item=>{
+          const notes = (userProfile && hasCreatorFit)
+            ? fitNotes(analyzeFit({creator:creatorForFit,user:userProfile,item}),haul.creator)
+            : [];
+          return (
+            <div key={item.id} style={{marginBottom:8}}>
+              <div onClick={()=>toggle(item.id)} style={{display:"flex",alignItems:"center",gap:10,background:item.checked?C.accentLight:C.tag,border:`1.5px solid ${item.checked?C.accent:C.border}`,borderRadius:14,padding:12,cursor:"pointer"}}>
+                <div style={{width:20,height:20,borderRadius:5,border:`2px solid ${item.checked?C.accent:C.border}`,background:item.checked?C.accent:"white",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                  {item.checked&&<span style={{color:"white",fontSize:12,fontWeight:700}}>✓</span>}
+                </div>
+                {item.image
+                  ? <img src={item.image} alt={item.name} style={{width:44,height:44,borderRadius:10,objectFit:"cover",flexShrink:0}} onError={e=>{e.target.style.display="none"}}/>
+                  : <Dot col={item.color}/>
+                }
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:700,fontSize:13,color:C.dark,fontFamily:FB}}>{item.name}</div>
+                  <div style={{fontSize:11,color:C.muted,fontFamily:FB}}>{item.brand}</div>
+                </div>
+                <div style={{fontWeight:800,fontSize:14,color:C.dark,fontFamily:FB}}>{item.realPrice||`$${item.price.toFixed(2)}`}</div>
+              </div>
+              {notes.length>0 && (
+                <div style={{marginTop:4,background:C.accentLight,borderLeft:`3px solid ${C.accent}`,borderRadius:8,padding:"8px 12px",fontSize:12,color:C.dark,fontFamily:FB,lineHeight:1.5}}>
+                  {notes.map((n,i)=>(
+                    <div key={i} style={{marginTop:i?4:0}}>
+                      <span style={{fontWeight:700,color:C.accent,marginRight:6}}>Fit</span>{n}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-            {item.image
-              ? <img src={item.image} alt={item.name} style={{width:44,height:44,borderRadius:10,objectFit:"cover",flexShrink:0}} onError={e=>{e.target.style.display="none"}}/>
-              : <Dot col={item.color}/>
-            }
-            <div style={{flex:1}}>
-              <div style={{fontWeight:700,fontSize:13,color:C.dark,fontFamily:FB}}>{item.name}</div>
-              <div style={{fontSize:11,color:C.muted,fontFamily:FB}}>{item.brand}</div>
-            </div>
-            <div style={{fontWeight:800,fontSize:14,color:C.dark,fontFamily:FB}}>{item.realPrice||`$${item.price.toFixed(2)}`}</div>
-          </div>
-        ))}
+          );
+        })}
       </div>
       <div style={{position:"absolute",bottom:0,left:0,right:0,background:"white",borderTop:`1px solid ${C.border}`,padding:"14px 16px 24px",boxShadow:"0 -8px 30px rgba(26,18,9,0.08)"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
@@ -341,6 +468,116 @@ function DetailScreen({haul,onBack,onCheckout}){
   );
 }
 
+function FitOnboarding({onSave, onSkip}){
+  const [height,setHeight]=useState("");
+  const [usualSize,setUsualSize]=useState("");
+  const [build,setBuild]=useState("");
+  const [saving,setSaving]=useState(false);
+
+  const canSave = height && usualSize && build && !saving;
+
+  const save=async()=>{
+    setSaving(true);
+    const {data:{user}} = await supabase.auth.getUser();
+    if(!user){ setSaving(false); return; }
+    const profile={user_id:user.id, height_cm:parseInt(height,10), usual_size:usualSize, build};
+    const {error} = await supabase.from("user_profiles").upsert(profile,{onConflict:"user_id"});
+    setSaving(false);
+    if(!error) onSave(profile);
+  };
+
+  const fieldStyle={width:"100%",padding:"12px 14px",borderRadius:10,border:`1px solid ${C.border}`,fontSize:14,marginBottom:10,background:C.bg,fontFamily:FB,boxSizing:"border-box"};
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(20,20,20,0.55)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:1000}}>
+      <div style={{background:C.card,borderRadius:"20px 20px 0 0",padding:24,maxWidth:420,width:"100%",boxShadow:"0 -8px 24px rgba(0,0,0,0.1)"}}>
+        <div style={{fontSize:22,fontFamily:FD,fontWeight:700,marginBottom:4,color:C.dark}}>Set up your fit</div>
+        <div style={{fontSize:13,color:C.muted,fontFamily:FB,marginBottom:18}}>30 seconds. We'll personalize every recommendation so you know how it'll actually fit you — not the creator.</div>
+        <input type="number" placeholder="Height (cm)" value={height} onChange={e=>setHeight(e.target.value)} style={fieldStyle}/>
+        <select value={usualSize} onChange={e=>setUsualSize(e.target.value)} style={fieldStyle}>
+          <option value="">Usual size</option>
+          {["XXS","XS","S","M","L","XL","XXL"].map(s=><option key={s} value={s}>{s}</option>)}
+        </select>
+        <select value={build} onChange={e=>setBuild(e.target.value)} style={fieldStyle}>
+          <option value="">Build</option>
+          <option value="slim">Slim</option>
+          <option value="mid">Mid</option>
+          <option value="curvy">Curvy</option>
+        </select>
+        <button onClick={save} disabled={!canSave} style={{width:"100%",padding:14,borderRadius:10,background:canSave?C.accent:C.border,color:"white",border:"none",fontSize:15,fontWeight:600,fontFamily:FBtn,cursor:canSave?"pointer":"not-allowed",marginTop:4}}>
+          {saving?"Saving…":"Save & personalize"}
+        </button>
+        <button onClick={onSkip} style={{width:"100%",padding:10,marginTop:6,background:"transparent",border:"none",color:C.muted,fontSize:13,fontFamily:FB,cursor:"pointer"}}>Skip for now</button>
+      </div>
+    </div>
+  );
+}
+
+// Shown once per creator, the first time they tap "+ Post Haul" without
+// a creator_profiles row. Not skippable — without these fields the fit
+// intelligence for every haul they post will be null forever.
+function CreatorOnboarding({user, onSave, onCancel}){
+  const defaultName = user.user_metadata?.full_name || user.email.split("@")[0];
+  const defaultHandle = "@" + user.email.split("@")[0];
+  const [name,setName]=useState(defaultName);
+  const [handle,setHandle]=useState(defaultHandle);
+  const [height,setHeight]=useState("");
+  const [usualSize,setUsualSize]=useState("");
+  const [build,setBuild]=useState("");
+  const [saving,setSaving]=useState(false);
+  const [error,setError]=useState(null);
+
+  const canSave = name.trim() && handle.trim() && height && usualSize && build && !saving;
+
+  const save=async()=>{
+    setSaving(true);
+    setError(null);
+    const profile={
+      creator_id: user.id,
+      name: name.trim(),
+      handle: handle.trim().startsWith("@") ? handle.trim() : "@"+handle.trim(),
+      height_cm: parseInt(height,10),
+      usual_size: usualSize,
+      build,
+      verified: false,
+    };
+    const {error} = await supabase.from("creator_profiles").upsert(profile,{onConflict:"creator_id"});
+    setSaving(false);
+    if(error){ setError(error.message); return; }
+    onSave(profile);
+  };
+
+  const fieldStyle={width:"100%",padding:"12px 14px",borderRadius:10,border:`1px solid ${C.border}`,fontSize:14,marginBottom:10,background:C.bg,fontFamily:FB,boxSizing:"border-box"};
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(20,20,20,0.55)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:1000}}>
+      <div style={{background:C.card,borderRadius:"20px 20px 0 0",padding:24,maxWidth:420,width:"100%",boxShadow:"0 -8px 24px rgba(0,0,0,0.1)",maxHeight:"90vh",overflowY:"auto"}}>
+        <div style={{fontSize:11,color:C.accent,fontFamily:FB,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>One-time setup</div>
+        <div style={{fontSize:22,fontFamily:FD,fontWeight:700,marginBottom:4,color:C.dark}}>Set up your creator profile</div>
+        <div style={{fontSize:13,color:C.muted,fontFamily:FB,marginBottom:18,lineHeight:1.5}}>Your body details power fit intelligence — shoppers see how each piece will fit <em>them</em>, not you.</div>
+        <input placeholder="Display name" value={name} onChange={e=>setName(e.target.value)} style={fieldStyle}/>
+        <input placeholder="Handle (@yourname)" value={handle} onChange={e=>setHandle(e.target.value)} style={fieldStyle}/>
+        <input type="number" placeholder="Height (cm)" value={height} onChange={e=>setHeight(e.target.value)} style={fieldStyle}/>
+        <select value={usualSize} onChange={e=>setUsualSize(e.target.value)} style={fieldStyle}>
+          <option value="">Usual size</option>
+          {["XXS","XS","S","M","L","XL","XXL"].map(s=><option key={s} value={s}>{s}</option>)}
+        </select>
+        <select value={build} onChange={e=>setBuild(e.target.value)} style={fieldStyle}>
+          <option value="">Build</option>
+          <option value="slim">Slim</option>
+          <option value="mid">Mid</option>
+          <option value="curvy">Curvy</option>
+        </select>
+        {error&&<div style={{fontSize:12,color:C.accent,fontFamily:FB,marginBottom:10,background:C.accentLight,padding:"8px 12px",borderRadius:8}}>{error}</div>}
+        <button onClick={save} disabled={!canSave} style={{width:"100%",padding:14,borderRadius:10,background:canSave?C.accent:C.border,color:"white",border:"none",fontSize:15,fontWeight:600,fontFamily:FBtn,cursor:canSave?"pointer":"not-allowed",marginTop:4}}>
+          {saving?"Saving…":"Save & continue"}
+        </button>
+        <button onClick={onCancel} style={{width:"100%",padding:10,marginTop:6,background:"transparent",border:"none",color:C.muted,fontSize:13,fontFamily:FB,cursor:"pointer"}}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
 function SnapScreen({onBack, onCheckout}){
   const [messages,setMessages]=useState([{role:"ai",text:"Hey! 👋 I'm your personal shopping assistant. Tell me what you're looking for and I'll find it from our creator hauls.\n\nTry something like:\n• \"I want a blazer under $100\"\n• \"Show me something Zara M. wore\"\n• \"Find me Y2K pieces\"",items:[]}]);
   const [input,setInput]=useState("");
@@ -350,13 +587,41 @@ function SnapScreen({onBack, onCheckout}){
   const inputRef=React.useRef();
 
   const [snapHauls,setSnapHauls]=useState([]);
-  useEffect(()=>{supabase.from("hauls").select("*, haul_items(*)").then(({data})=>{if(data)setSnapHauls(data.map(h=>formatHaulForFeed(h,h.haul_items)));});},[]);
+  const [userProfile,setUserProfile]=useState(null);
+  const [showFitOnboarding,setShowFitOnboarding]=useState(false);
+
+  useEffect(()=>{
+    (async()=>{
+      const {data} = await supabase.from("hauls").select("*, haul_items(*)");
+      if(!data) return;
+      const enriched = await enrichHaulsWithCreatorProfiles(data);
+      setSnapHauls(enriched.map(h=>formatHaulForFeed(h, h.haul_items, h._creatorProfile)));
+    })();
+  },[]);
+
+  useEffect(()=>{
+    (async()=>{
+      const {data:{user}} = await supabase.auth.getUser();
+      if(!user) return;
+      const {data} = await supabase.from("user_profiles").select("*").eq("user_id",user.id).maybeSingle();
+      if(data && data.height_cm){
+        setUserProfile(data);
+      } else {
+        setShowFitOnboarding(true);
+      }
+    })();
+  },[]);
+  // Flatten creator body onto each item so api/chat.js can read it directly
+  // and analyzeFit() works without schema awareness.
   const CATALOG=snapHauls.flatMap(h=>h.items.map(item=>({
     ...item,
     creator:h.creator,
     handle:h.handle,
     haul:h.title,
     haulId:h.id,
+    creator_height_cm: h.creator_height_cm,
+    creator_build: h.creator_build,
+    creator_usual_size: h.creator_usual_size,
   })));
 
   React.useEffect(()=>{
@@ -378,7 +643,7 @@ function SnapScreen({onBack, onCheckout}){
       const resp=await fetch("/api/chat",{
         method:"POST",
         headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({message:msg,history:history.slice(-6),catalog:CATALOG})
+        body:JSON.stringify({message:msg,history:history.slice(-6),catalog:CATALOG,userProfile})
       });
       const data=await resp.json();
       if(!resp.ok) throw new Error(data.error||"Failed");
@@ -438,19 +703,26 @@ function SnapScreen({onBack, onCheckout}){
             {msg.items&&msg.items.length>0&&(
               <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:8}}>
                 {msg.items.map((item,ii)=>(
-                  <div key={ii} style={{background:C.card,border:`1.5px solid ${isInCart(item.id)?C.accent:C.border}`,borderRadius:14,padding:12,display:"flex",alignItems:"center",gap:10,boxShadow:"0 2px 8px rgba(26,18,9,0.04)"}}>
-                    <div style={{width:48,height:48,borderRadius:10,background:item.color||"#eee",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>👗</div>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontWeight:700,fontSize:13,color:C.dark,fontFamily:FB,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{item.name}</div>
-                      <div style={{fontSize:11,color:C.muted,fontFamily:FB}}>{item.brand} · {item.creator}</div>
-                      <div style={{fontSize:10,color:C.accent,fontFamily:FB,marginTop:2}}>from {item.haul}</div>
+                  <div key={ii} style={{background:C.card,border:`1.5px solid ${isInCart(item.id)?C.accent:C.border}`,borderRadius:14,padding:12,display:"flex",flexDirection:"column",gap:8,boxShadow:"0 2px 8px rgba(26,18,9,0.04)"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                      <div style={{width:48,height:48,borderRadius:10,background:item.color||"#eee",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>👗</div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontWeight:700,fontSize:13,color:C.dark,fontFamily:FB,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{item.name}</div>
+                        <div style={{fontSize:11,color:C.muted,fontFamily:FB}}>{item.brand} · {item.creator}</div>
+                        <div style={{fontSize:10,color:C.accent,fontFamily:FB,marginTop:2}}>from {item.haul}</div>
+                      </div>
+                      <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6,flexShrink:0}}>
+                        <div style={{fontWeight:800,fontSize:14,color:C.dark,fontFamily:FB}}>${item.price?.toFixed(2)}</div>
+                        <button onClick={()=>toggleCart(item)} style={{padding:"5px 10px",borderRadius:20,background:isInCart(item.id)?C.accent:C.tag,color:isInCart(item.id)?"white":C.dark,border:"none",fontSize:11,fontWeight:700,fontFamily:FB,cursor:"pointer",whiteSpace:"nowrap"}}>
+                          {isInCart(item.id)?"✓ Added":"+ Add"}
+                        </button>
+                      </div>
                     </div>
-                    <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6,flexShrink:0}}>
-                      <div style={{fontWeight:800,fontSize:14,color:C.dark,fontFamily:FB}}>${item.price?.toFixed(2)}</div>
-                      <button onClick={()=>toggleCart(item)} style={{padding:"5px 10px",borderRadius:20,background:isInCart(item.id)?C.accent:C.tag,color:isInCart(item.id)?"white":C.dark,border:"none",fontSize:11,fontWeight:700,fontFamily:FB,cursor:"pointer",whiteSpace:"nowrap"}}>
-                        {isInCart(item.id)?"✓ Added":"+ Add"}
-                      </button>
-                    </div>
+                    {item.fit_note && (
+                      <div style={{padding:"8px 10px",background:C.accentLight,borderLeft:`2px solid ${C.accent}`,borderRadius:4,fontSize:11,lineHeight:1.4,color:C.dark,fontFamily:FB}}>
+                        <span style={{fontWeight:700,marginRight:4}}>Fit</span>{item.fit_note}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -495,6 +767,13 @@ function SnapScreen({onBack, onCheckout}){
           </button>
         </div>
       </div>
+
+      {showFitOnboarding && (
+        <FitOnboarding
+          onSave={(profile)=>{setUserProfile(profile); setShowFitOnboarding(false);}}
+          onSkip={()=>setShowFitOnboarding(false)}
+        />
+      )}
     </div>
   );
 }
@@ -509,7 +788,7 @@ function Field({label,k,placeholder,half,buyer,setBuyer}){
   );
 }
 
-function CheckoutScreen({items,total,onDone}){
+function CheckoutScreen({items,total,onDone,onBack}){
   const [stage,setStage]=useState("info"); // info → review → processing → done → error
   const [orders,setOrders]=useState([]);
   const [error,setError]=useState(null);
@@ -582,8 +861,11 @@ function CheckoutScreen({items,total,onDone}){
   if(stage==="info") return(
     <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
       <div style={{padding:"16px 16px 0",flexShrink:0}}>
-        <div style={{fontSize:17,fontWeight:800,color:C.dark,fontFamily:FD,marginBottom:4}}>Shipping Info</div>
-        <div style={{fontSize:12,color:C.muted,fontFamily:FB,marginBottom:14}}>Where should we ship your order?</div>
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:4}}>
+          <button onClick={onBack||onDone} style={{width:32,height:32,borderRadius:"50%",background:C.tag,border:"none",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>←</button>
+          <div style={{fontSize:17,fontWeight:800,color:C.dark,fontFamily:FD}}>Shipping Info</div>
+        </div>
+        <div style={{fontSize:12,color:C.muted,fontFamily:FB,marginBottom:14,paddingLeft:44}}>Where should we ship your order?</div>
       </div>
       <div style={{flex:1,overflowY:"auto",padding:"0 16px 140px"}}>
         <div style={{display:"flex",flexWrap:"wrap",gap:"0 10px"}}>
@@ -660,6 +942,20 @@ function ProfileScreen({user, onSignOut, onUserUpdate}){
   const [loading,setLoading]=useState(false);
   const [success,setSuccess]=useState(null);
   const [error,setError]=useState(null);
+  // Real haul count from Supabase. null = still loading; render an em-dash
+  // until it lands so we don't briefly show "0" for someone who has hauls.
+  const [haulCount,setHaulCount]=useState(null);
+
+  useEffect(()=>{
+    if(!user) return;
+    (async()=>{
+      const {count} = await supabase
+        .from("hauls")
+        .select("*", {count:"exact", head:true})
+        .eq("creator_id", user.id);
+      setHaulCount(count ?? 0);
+    })();
+  },[user?.id]);
 
   const initials = user?.user_metadata?.full_name
     ? user.user_metadata.full_name.split(" ").map(n=>n[0]).join("").toUpperCase().slice(0,2)
@@ -670,8 +966,9 @@ function ProfileScreen({user, onSignOut, onUserUpdate}){
     setError(null);
     setSuccess(null);
     try{
+      const nameChanged = name !== user.user_metadata?.full_name;
       const updates={};
-      if(name!==user.user_metadata?.full_name) updates.data={full_name:name};
+      if(nameChanged) updates.data={full_name:name};
       if(email!==user.email) updates.email=email;
       if(newPassword){
         if(newPassword!==confirmPassword) throw new Error("Passwords don't match");
@@ -682,6 +979,27 @@ function ProfileScreen({user, onSignOut, onUserUpdate}){
       const{data,error}=await supabase.auth.updateUser(updates);
       if(error) throw error;
       onUserUpdate(data.user);
+
+      // Cascade the display-name change to creator_profiles AND every haul
+      // this creator owns. Without this, hauls.creator_name (a denormalized
+      // snapshot at post time) keeps the old name on the feed even though
+      // auth metadata has updated. Best-effort — auth update has already
+      // landed at this point; we don't unwind it if these fail.
+      if(nameChanged){
+        const trimmed = name.trim();
+        const {error:profileError} = await supabase
+          .from("creator_profiles")
+          .update({name: trimmed})
+          .eq("creator_id", user.id);
+        if(profileError) console.warn("creator_profiles name cascade failed:", profileError.message);
+
+        const {error:haulsError} = await supabase
+          .from("hauls")
+          .update({creator_name: trimmed})
+          .eq("creator_id", user.id);
+        if(haulsError) console.warn("hauls creator_name cascade failed:", haulsError.message);
+      }
+
       setSuccess(email!==user.email?"Check your new email for a confirmation link.":"Profile updated successfully.");
       setNewPassword("");
       setConfirmPassword("");
@@ -718,7 +1036,10 @@ function ProfileScreen({user, onSignOut, onUserUpdate}){
 
       {!editing&&(
         <div style={{display:"flex",gap:10,marginBottom:24}}>
-          {[{l:"Hauls",v:"0"},{l:"Purchased",v:"$0"},{l:"Followers",v:"0"}].map(s=>(
+          {[
+            {l:"Hauls", v: haulCount===null ? "—" : String(haulCount)},
+            {l:"Earnings", v:"$0"},
+          ].map(s=>(
             <div key={s.l} style={{flex:1,background:C.tag,borderRadius:14,padding:"12px 6px",textAlign:"center"}}>
               <div style={{fontSize:18,fontWeight:800,color:C.accent,fontFamily:FD}}>{s.v}</div>
               <div style={{fontSize:10,color:C.muted,fontFamily:FB}}>{s.l}</div>
@@ -775,18 +1096,114 @@ function ProfileScreen({user, onSignOut, onUserUpdate}){
 }
 
 
-function PostHaulScreen({user, onBack, onPosted}){
-  const [title,setTitle]=useState("");
+// editingHaul (optional): an existing haul to edit, including its haul_items.
+// When set, this component updates the haul row + replaces haul_items instead
+// of inserting a new haul. The existing video is preserved unless the user
+// explicitly removes it and uploads a new one.
+function PostHaulScreen({user, onBack, onPosted, editingHaul=null}){
+  const isEdit = Boolean(editingHaul);
+  // validation: { status: 'idle'|'checking'|'valid'|'invalid', reason?, data?, validatedUrl? }
+  // validatedUrl tracks which URL was last checked so we don't re-validate on
+  // every blur if the link hasn't changed.
+  const newItem=()=>({
+    id:Date.now()+Math.random(),
+    name:"",link:"",price:"",brand:"",
+    category:"",fit_style:"",length_on_creator:"",
+    validation:{status:"idle"},
+  });
+  // On edit, prefilled items already have known-good data from the DB; mark
+  // them as valid up-front so the submit button isn't blocked. If the creator
+  // changes the URL, validation re-runs.
+  const prefillItems = (editingHaul?.haul_items||[]).map(i=>({
+    id: i.id,
+    name: i.name||"",
+    brand: i.brand||"",
+    price: i.price!=null?String(i.price):"",
+    link: i.link||"",
+    category: i.category||"",
+    fit_style: i.fit_style||"",
+    length_on_creator: i.length_on_creator||"",
+    validation: i.link ? {
+      status:"valid",
+      validatedUrl:i.link,
+      data:{name:i.name||null, brand:i.brand||null, price:i.price||null, priceDisplay:null, image:null},
+      retailer:null,
+    } : {status:"idle"},
+  }));
+  const [title,setTitle]=useState(editingHaul?.title||"");
   const [videoFile,setVideoFile]=useState(null);
   const [videoPreview,setVideoPreview]=useState(null);
-  const [items,setItems]=useState([{id:Date.now(),name:"",link:"",price:"",brand:""}]);
+  const [existingVideoUrl,setExistingVideoUrl]=useState(editingHaul?.video_url||null);
+  const [items,setItems]=useState(prefillItems.length?prefillItems:[newItem()]);
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState(null);
   const [stage,setStage]=useState("form"); // form | uploading | done
 
-  const addItem=()=>setItems(prev=>[...prev,{id:Date.now(),name:"",link:"",price:"",brand:""}]);
+  const [creatorProfile,setCreatorProfile]=useState(null);
+  const [profileLoading,setProfileLoading]=useState(true);
+
+  useEffect(()=>{
+    (async()=>{
+      const {data} = await supabase
+        .from("creator_profiles")
+        .select("*")
+        .eq("creator_id", user.id)
+        .maybeSingle();
+      setCreatorProfile(data||null);
+      setProfileLoading(false);
+    })();
+  },[user.id]);
+
+  const addItem=()=>setItems(prev=>[...prev,newItem()]);
   const removeItem=(id)=>setItems(prev=>prev.filter(i=>i.id!==id));
-  const updateItem=(id,field,val)=>setItems(prev=>prev.map(i=>i.id===id?{...i,[field]:val}:i));
+  const updateItem=(id,field,val)=>setItems(prev=>prev.map(i=>{
+    if(i.id!==id) return i;
+    const next={...i,[field]:val};
+    // Editing the link invalidates any prior validation so the creator
+    // can't slip an unchecked URL through by retyping.
+    if(field==="link" && val!==i.validation?.validatedUrl){
+      next.validation={status:"idle"};
+    }
+    return next;
+  }));
+
+  // Validate a link via /api/check-url. Idempotent — skips the network
+  // call if we already validated this exact URL on this item.
+  const validateLink=async(itemId)=>{
+    const item = items.find(i=>i.id===itemId);
+    if(!item) return;
+    const link = item.link.trim();
+    if(!link) return;
+    if(item.validation?.validatedUrl===link && item.validation.status!=="idle") return;
+
+    setItems(prev=>prev.map(i=>i.id===itemId?{...i,validation:{status:"checking",validatedUrl:link}}:i));
+    try{
+      const resp = await fetch("/api/check-url", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({url:link}),
+      });
+      const result = await resp.json();
+      // Only update if the link hasn't changed since we kicked off — the
+      // creator may have retyped during the in-flight call.
+      setItems(prev=>prev.map(i=>{
+        if(i.id!==itemId || i.link.trim()!==link) return i;
+        return {...i, validation:{
+          status: result.valid ? "valid" : "invalid",
+          validatedUrl: link,
+          retailer: result.retailer || null,
+          data: result.data || null,
+          reason: result.reason || null,
+          isPurchasable: result.isPurchasable !== false,
+        }};
+      }));
+    }catch(err){
+      setItems(prev=>prev.map(i=>i.id===itemId && i.link.trim()===link
+        ? {...i, validation:{status:"invalid", validatedUrl:link, reason:`Could not validate: ${err.message}`}}
+        : i
+      ));
+    }
+  };
 
   const handleVideo=(e)=>{
     const file=e.target.files[0];
@@ -797,67 +1214,120 @@ function PostHaulScreen({user, onBack, onPosted}){
 
   const handleSubmit=async()=>{
     if(!title.trim()) return setError("Please add a title.");
-    if(!videoFile) return setError("Please upload a video.");
-    const validItems=items.filter(i=>i.name.trim());
-    if(validItems.length===0) return setError("Add at least one item.");
+    if(!videoFile && !existingVideoUrl) return setError("Please upload a video.");
+    const validItems=items.filter(i=>i.link.trim());
+    if(validItems.length===0) return setError("Add at least one product link.");
+
+    // Every link must have passed validation. Items in 'checking' or 'idle'
+    // also block — we need to know the URL is valid before posting.
+    const blockingItems = validItems.filter(i=>i.validation?.status!=="valid");
+    if(blockingItems.length>0){
+      const checking = blockingItems.some(i=>i.validation?.status==="checking");
+      if(checking) return setError("Still checking some links — give it a second.");
+      return setError("One or more links aren't supported. Please fix them before posting.");
+    }
 
     setLoading(true);
     setStage("uploading");
     setError(null);
 
     try{
-      // 1. Upload video to Supabase Storage
-      const ext=videoFile.name.split(".").pop();
-      const path=`hauls/${user.id}/${Date.now()}.${ext}`;
-      const{error:uploadError}=await supabase.storage
-        .from("haul-videos")
-        .upload(path, videoFile, {cacheControl:"3600",upsert:false});
-      if(uploadError) throw uploadError;
+      // 1. Upload the new video (if one was picked). In edit mode, also
+      // delete the old object so we don't orphan storage. We upload first;
+      // only on success do we touch the old blob — safer if upload fails.
+      let videoUrl = existingVideoUrl;
+      let newUploadPath = null;
+      if(videoFile){
+        const ext = videoFile.name.split(".").pop();
+        newUploadPath = `hauls/${user.id}/${Date.now()}.${ext}`;
+        const {error:uploadError} = await supabase.storage
+          .from("haul-videos")
+          .upload(newUploadPath, videoFile, {cacheControl:"3600",upsert:false});
+        if(uploadError) throw uploadError;
+        const {data:{publicUrl}} = supabase.storage
+          .from("haul-videos")
+          .getPublicUrl(newUploadPath);
+        videoUrl = publicUrl;
+      }
 
-      // 2. Get public URL
-      const{data:{publicUrl}}=supabase.storage
-        .from("haul-videos")
-        .getPublicUrl(path);
+      let haul;
+      if(isEdit){
+        // 2a. Update the existing haul row. Leave views/likes alone —
+        // editing metadata shouldn't reset engagement counts.
+        const updates = {title:title.trim()};
+        if(videoFile) updates.video_url = videoUrl;
+        const {data,error:updateError} = await supabase
+          .from("hauls")
+          .update(updates)
+          .eq("id", editingHaul.id)
+          .select()
+          .single();
+        if(updateError) throw updateError;
+        haul = data;
 
-      // 3. Insert haul record
-      const{data:haul,error:haulError}=await supabase
-        .from("hauls")
-        .insert({
-          creator_id: user.id,
-          creator_name: user.user_metadata?.full_name||user.email,
-          creator_handle: "@"+user.email.split("@")[0],
-          title: title.trim(),
-          video_url: publicUrl,
-          views: 0,
-          likes: 0,
-        })
-        .select()
-        .single();
-      if(haulError) throw haulError;
+        // 2b. Replace haul_items entirely. Simpler than diffing — diffing
+        // would pay off only if other tables FK into haul_items (cart lines,
+        // orders). If that gets added later, move to a proper upsert/diff.
+        const {error:delItemsError} = await supabase
+          .from("haul_items")
+          .delete()
+          .eq("haul_id", editingHaul.id);
+        if(delItemsError) throw delItemsError;
 
-      // 4. Insert items — server-side product.js will handle real price lookup & DB update
-      const itemRows=validItems.map(i=>({
+        // 2c. If the video changed, delete the old blob. Best-effort — a
+        // storage leak is strictly worse than a failed save, so we don't
+        // throw if this fails.
+        if(videoFile && editingHaul.video_url){
+          const oldPath = storagePathFromVideoUrl(editingHaul.video_url);
+          if(oldPath){
+            supabase.storage.from("haul-videos").remove([oldPath])
+              .catch(e=>console.warn("Old video cleanup failed:", e.message));
+          }
+        }
+      } else {
+        // 2. Insert new haul. creator_name/handle are denormalized snapshots
+        // at post time — pulled from the creator's profile so renames on the
+        // profile don't retroactively rewrite old hauls.
+        const {data,error:haulError} = await supabase
+          .from("hauls")
+          .insert({
+            creator_id: user.id,
+            creator_name: creatorProfile.name,
+            creator_handle: creatorProfile.handle,
+            title: title.trim(),
+            video_url: videoUrl,
+            views: 0,
+            likes: 0,
+          })
+          .select()
+          .single();
+        if(haulError) throw haulError;
+        haul = data;
+      }
+
+      // 3. Insert items. Creator supplies only link + fit tags; name/brand/
+      // price come from the /api/check-url validation that ran when they
+      // pasted the link. Only fields Rye actually returned are populated —
+      // missing ones stay null rather than getting fabricated defaults.
+      const itemRows = validItems.map(i=>({
         haul_id: haul.id,
-        name: i.name.trim(),
-        brand: i.brand.trim(),
-        price: parseFloat(i.price)||0,
         link: i.link.trim(),
+        name: i.validation?.data?.name ?? null,
+        brand: i.validation?.data?.brand ?? null,
+        price: i.validation?.data?.price ?? null,
+        category: i.category||null,
+        fit_style: i.fit_style||null,
+        length_on_creator: i.length_on_creator||null,
       }));
-      const{data:insertedItems,error:itemsError}=await supabase
+      const {data:insertedItems,error:itemsError} = await supabase
         .from("haul_items")
         .insert(itemRows)
         .select();
       if(itemsError) throw itemsError;
 
-      // 5. Fire & forget — product.js fetches real prices and writes to DB server-side
-      const itemsWithLinks=(insertedItems||[]).filter(i=>i.link);
-      if(itemsWithLinks.length>0){
-        fetch("/api/product",{
-          method:"POST",
-          headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({urls:itemsWithLinks.map(i=>({id:i.id,url:i.link}))})
-        }).catch(e=>console.warn("Price lookup failed:",e.message));
-      }
+      // (No /api/product fire-and-forget here anymore — check-url already
+      // gave us the data when the link was pasted, and the row was inserted
+      // with the Rye-returned values directly.)
 
       setStage("done");
     }catch(err){
@@ -867,20 +1337,38 @@ function PostHaulScreen({user, onBack, onPosted}){
     setLoading(false);
   };
 
+  if(profileLoading) return(
+    <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100%"}}>
+      <div style={{display:"flex",gap:6}}>
+        {[0,1,2].map(i=><div key={i} style={{width:8,height:8,borderRadius:"50%",background:C.accent,animation:`bounce 0.8s ease-in-out ${i*0.2}s infinite alternate`}}/>)}
+      </div>
+    </div>
+  );
+
+  // Creator profile is required for a first post. On edit, the haul already
+  // exists, so a profile must already exist — skip the gate.
+  if(!isEdit && !creatorProfile) return(
+    <CreatorOnboarding
+      user={user}
+      onSave={(p)=>setCreatorProfile(p)}
+      onCancel={onBack}
+    />
+  );
+
   if(stage==="done") return(
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",padding:32,textAlign:"center"}}>
       <div style={{fontSize:56,marginBottom:16}}>🎉</div>
-      <div style={{fontSize:22,fontWeight:700,fontStyle:"italic",color:C.dark,fontFamily:FD,marginBottom:8}}>Haul Posted!</div>
-      <div style={{fontSize:13,color:C.muted,fontFamily:FB,lineHeight:1.8,marginBottom:28}}>Your haul is live. Shoppers can now discover and buy your looks.</div>
-      <button onClick={onPosted} style={{width:"100%",padding:14,borderRadius:14,background:C.dark,color:"white",border:"none",fontWeight:700,fontSize:14,fontFamily:FBtn,cursor:"pointer"}}>Back to Feed</button>
+      <div style={{fontSize:22,fontWeight:700,fontStyle:"italic",color:C.dark,fontFamily:FD,marginBottom:8}}>{isEdit?"Haul Updated!":"Haul Posted!"}</div>
+      <div style={{fontSize:13,color:C.muted,fontFamily:FB,lineHeight:1.8,marginBottom:28}}>{isEdit?"Your changes are live.":"Your haul is live. Shoppers can now discover and buy your looks."}</div>
+      <button onClick={onPosted} style={{width:"100%",padding:14,borderRadius:14,background:C.dark,color:"white",border:"none",fontWeight:700,fontSize:14,fontFamily:FBtn,cursor:"pointer"}}>{isEdit?"Back to My Hauls":"Back to Feed"}</button>
     </div>
   );
 
   if(stage==="uploading") return(
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",padding:32,textAlign:"center"}}>
       <div style={{fontSize:56,marginBottom:16}}>📤</div>
-      <div style={{fontSize:20,fontWeight:700,fontStyle:"italic",color:C.dark,fontFamily:FD,marginBottom:8}}>Uploading your haul...</div>
-      <div style={{fontSize:13,color:C.muted,fontFamily:FB,marginBottom:20}}>Uploading video and verifying prices...</div>
+      <div style={{fontSize:20,fontWeight:700,fontStyle:"italic",color:C.dark,fontFamily:FD,marginBottom:8}}>{isEdit?"Saving your changes…":"Uploading your haul..."}</div>
+      <div style={{fontSize:13,color:C.muted,fontFamily:FB,marginBottom:20}}>{isEdit?"This should only take a moment.":"Uploading video and verifying prices..."}</div>
       <div style={{display:"flex",gap:6}}>
         {[0,1,2].map(i=><div key={i} style={{width:8,height:8,borderRadius:"50%",background:C.accent,animation:`bounce 0.8s ease-in-out ${i*0.2}s infinite alternate`}}/>)}
       </div>
@@ -892,9 +1380,9 @@ function PostHaulScreen({user, onBack, onPosted}){
       <div style={{padding:"16px 16px 0",flexShrink:0}}>
         <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:4}}>
           <button onClick={onBack} style={{width:32,height:32,borderRadius:"50%",background:C.tag,border:"none",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>←</button>
-          <div style={{fontSize:18,fontWeight:700,fontStyle:"italic",color:C.dark,fontFamily:FD}}>Post a Haul</div>
+          <div style={{fontSize:18,fontWeight:700,fontStyle:"italic",color:C.dark,fontFamily:FD}}>{isEdit?"Edit Haul":"Post a Haul"}</div>
         </div>
-        <div style={{fontSize:12,color:C.muted,fontFamily:FB,marginBottom:14,paddingLeft:44}}>Share your look, earn on every purchase.</div>
+        <div style={{fontSize:12,color:C.muted,fontFamily:FB,marginBottom:14,paddingLeft:44}}>{isEdit?"Update your look, tags, or video.":"Share your look, earn on every purchase."}</div>
       </div>
 
       <div style={{flex:1,overflowY:"auto",padding:"0 16px 120px"}}>
@@ -906,6 +1394,8 @@ function PostHaulScreen({user, onBack, onPosted}){
             <input type="file" accept="video/*" onChange={handleVideo} style={{display:"none"}}/>
             {videoPreview
               ? <video src={videoPreview} style={{width:"100%",height:160,objectFit:"cover",borderRadius:14,border:`1px solid ${C.border}`}} muted playsInline/>
+              : existingVideoUrl
+              ? <video src={existingVideoUrl} style={{width:"100%",height:160,objectFit:"cover",borderRadius:14,border:`1px solid ${C.border}`}} muted playsInline/>
               : <div style={{width:"100%",height:160,borderRadius:14,border:`2px dashed ${C.border}`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,background:C.tag}}>
                   <div style={{fontSize:28}}>🎬</div>
                   <div style={{fontSize:13,color:C.muted,fontFamily:FB}}>Tap to upload video</div>
@@ -913,7 +1403,12 @@ function PostHaulScreen({user, onBack, onPosted}){
                 </div>
             }
           </label>
-          {videoPreview&&<button onClick={()=>{setVideoFile(null);setVideoPreview(null);}} style={{marginTop:6,fontSize:11,color:C.accent,fontFamily:FB,background:"none",border:"none",cursor:"pointer",padding:0}}>Remove video</button>}
+          {videoPreview
+            ? <button onClick={()=>{setVideoFile(null);setVideoPreview(null);}} style={{marginTop:6,fontSize:11,color:C.accent,fontFamily:FB,background:"none",border:"none",cursor:"pointer",padding:0}}>Remove video</button>
+            : existingVideoUrl
+            ? <button onClick={()=>{setExistingVideoUrl(null);}} style={{marginTop:6,fontSize:11,color:C.accent,fontFamily:FB,background:"none",border:"none",cursor:"pointer",padding:0}}>Remove video</button>
+            : null
+          }
         </div>
 
         {/* Title */}
@@ -937,26 +1432,92 @@ function PostHaulScreen({user, onBack, onPosted}){
                 {items.length>1&&<button onClick={()=>removeItem(item.id)} style={{fontSize:11,color:C.muted,fontFamily:FB,background:"none",border:"none",cursor:"pointer",padding:0}}>Remove</button>}
               </div>
               <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
-                <div style={{flex:"1 1 calc(60% - 4px)"}}>
-                  <div style={{fontSize:10,color:C.muted,fontFamily:FB,marginBottom:3}}>Item name *</div>
-                  <input value={item.name} onChange={e=>updateItem(item.id,"name",e.target.value)} placeholder="Tailored Midi Skirt"
-                    style={{width:"100%",padding:"8px 10px",borderRadius:8,border:`1px solid ${C.border}`,background:C.bg,fontSize:12,fontFamily:FB,color:C.dark,outline:"none"}}/>
+                <div style={{flex:"1 1 100%"}}>
+                  <div style={{fontSize:10,color:C.muted,fontFamily:FB,marginBottom:3}}>Product link *</div>
+                  <input value={item.link}
+                    onChange={e=>updateItem(item.id,"link",e.target.value)}
+                    onBlur={()=>validateLink(item.id)}
+                    placeholder="https://..."
+                    style={{
+                      width:"100%",padding:"8px 10px",borderRadius:8,
+                      border:`1px solid ${
+                        item.validation?.status==="valid" ? "#2D6A4F"
+                        : item.validation?.status==="invalid" ? C.accent
+                        : C.border
+                      }`,
+                      background:C.bg,fontSize:12,fontFamily:FB,color:C.dark,outline:"none"
+                    }}/>
+                  {/* Validation feedback — one of four states. */}
+                  {item.validation?.status==="checking" && (
+                    <div style={{fontSize:10,color:C.muted,fontFamily:FB,marginTop:4,display:"flex",alignItems:"center",gap:6}}>
+                      <div style={{width:6,height:6,borderRadius:"50%",background:C.muted,animation:"bounce 0.8s ease-in-out infinite alternate"}}/>
+                      Checking link…
+                    </div>
+                  )}
+                  {item.validation?.status==="valid" && (
+                    <div style={{fontSize:10,color:"#2D6A4F",fontFamily:FB,marginTop:4,lineHeight:1.4}}>
+                      ✓ {item.validation.retailer || "Supported retailer"}
+                      {item.validation.data?.name ? ` · ${item.validation.data.name}` : ""}
+                      {item.validation.data?.priceDisplay ? ` · ${item.validation.data.priceDisplay}` : ""}
+                    </div>
+                  )}
+                  {item.validation?.status==="invalid" && (
+                    <div style={{fontSize:10,color:C.accent,fontFamily:FB,marginTop:4,lineHeight:1.4,background:C.accentLight,padding:"6px 8px",borderRadius:6}}>
+                      ✗ Unsupported link — please paste a different product URL.
+                    </div>
+                  )}
+                  {item.validation?.status==="idle" && !item.link && (
+                    <div style={{fontSize:10,color:C.muted,fontFamily:FB,marginTop:4,fontStyle:"italic"}}>
+                      Name, brand, and price auto-fill from the product page.
+                    </div>
+                  )}
                 </div>
-                <div style={{flex:"1 1 calc(40% - 4px)"}}>
-                  <div style={{fontSize:10,color:C.muted,fontFamily:FB,marginBottom:3}}>Brand</div>
-                  <input value={item.brand} onChange={e=>updateItem(item.id,"brand",e.target.value)} placeholder="Zara"
-                    style={{width:"100%",padding:"8px 10px",borderRadius:8,border:`1px solid ${C.border}`,background:C.bg,fontSize:12,fontFamily:FB,color:C.dark,outline:"none"}}/>
+                <div style={{flex:"1 1 100%",marginTop:4,fontSize:10,color:C.muted,fontFamily:FB,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Fit tags</div>
+                <div style={{flex:"1 1 calc(33% - 6px)"}}>
+                  <div style={{fontSize:10,color:C.muted,fontFamily:FB,marginBottom:3}}>Category</div>
+                  <select value={item.category} onChange={e=>updateItem(item.id,"category",e.target.value)}
+                    style={{width:"100%",padding:"8px 10px",borderRadius:8,border:`1px solid ${C.border}`,background:C.bg,fontSize:12,fontFamily:FB,color:C.dark,outline:"none"}}>
+                    <option value="">—</option>
+                    <option value="top">Top</option>
+                    <option value="bottom">Bottom</option>
+                    <option value="dress">Dress</option>
+                    <option value="outerwear">Outerwear</option>
+                    <option value="shoes">Shoes</option>
+                    <option value="accessory">Accessory</option>
+                  </select>
                 </div>
-                <div style={{flex:"1 1 calc(40% - 4px)"}}>
-                  <div style={{fontSize:10,color:C.muted,fontFamily:FB,marginBottom:3}}>Price ($)</div>
-                  <input value={item.price} onChange={e=>updateItem(item.id,"price",e.target.value)} placeholder="99.99" type="number"
-                    style={{width:"100%",padding:"8px 10px",borderRadius:8,border:`1px solid ${C.border}`,background:C.bg,fontSize:12,fontFamily:FB,color:C.dark,outline:"none"}}/>
-                </div>
-                <div style={{flex:"1 1 calc(60% - 4px)"}}>
-                  <div style={{fontSize:10,color:C.muted,fontFamily:FB,marginBottom:3}}>Product link</div>
-                  <input value={item.link} onChange={e=>updateItem(item.id,"link",e.target.value)} placeholder="https://..."
-                    style={{width:"100%",padding:"8px 10px",borderRadius:8,border:`1px solid ${C.border}`,background:C.bg,fontSize:12,fontFamily:FB,color:C.dark,outline:"none"}}/>
-                </div>
+                {item.category && !["shoes","accessory"].includes(item.category) && (
+                  <div style={{flex:"1 1 calc(33% - 6px)"}}>
+                    <div style={{fontSize:10,color:C.muted,fontFamily:FB,marginBottom:3}}>Fit</div>
+                    <select value={item.fit_style} onChange={e=>updateItem(item.id,"fit_style",e.target.value)}
+                      style={{width:"100%",padding:"8px 10px",borderRadius:8,border:`1px solid ${C.border}`,background:C.bg,fontSize:12,fontFamily:FB,color:C.dark,outline:"none"}}>
+                      <option value="">—</option>
+                      <option value="slim">Slim</option>
+                      <option value="regular">Regular</option>
+                      <option value="relaxed">Relaxed</option>
+                      <option value="oversized">Oversized</option>
+                    </select>
+                  </div>
+                )}
+                {item.category && !["shoes","accessory"].includes(item.category) && (
+                  <div style={{flex:"1 1 calc(33% - 6px)"}}>
+                    <div style={{fontSize:10,color:C.muted,fontFamily:FB,marginBottom:3}}>Length on you</div>
+                    <select value={item.length_on_creator} onChange={e=>updateItem(item.id,"length_on_creator",e.target.value)}
+                      style={{width:"100%",padding:"8px 10px",borderRadius:8,border:`1px solid ${C.border}`,background:C.bg,fontSize:12,fontFamily:FB,color:C.dark,outline:"none"}}>
+                      <option value="">—</option>
+                      {/* Crop and Waist describe hems above where a bottom
+                          starts, so they only make sense for tops/dresses/
+                          outerwear. Hide them when category=bottom. */}
+                      {item.category!=="bottom" && <option value="crop">Crop</option>}
+                      {item.category!=="bottom" && <option value="waist">Waist</option>}
+                      <option value="hip">Hip</option>
+                      <option value="mid_thigh">Mid-thigh</option>
+                      <option value="knee">Knee</option>
+                      <option value="midi">Midi</option>
+                      <option value="maxi">Maxi</option>
+                    </select>
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -966,17 +1527,130 @@ function PostHaulScreen({user, onBack, onPosted}){
       </div>
 
       <div style={{position:"absolute",bottom:0,left:0,right:0,background:C.bg,borderTop:`1px solid ${C.border}`,padding:"14px 16px 28px"}}>
-        <button onClick={handleSubmit} disabled={loading}
-          style={{width:"100%",padding:14,borderRadius:14,background:C.dark,color:"white",border:"none",fontWeight:700,fontSize:14,fontFamily:FBtn,cursor:"pointer"}}>
-          Post Haul →
-        </button>
+        {(()=>{
+          // Submit is allowed only when every item with a link has passed
+          // validation. Items still 'checking', 'invalid', or 'idle' (not
+          // yet blurred) keep the button disabled.
+          const linksReady = items.filter(i=>i.link.trim())
+            .every(i=>i.validation?.status==="valid");
+          const canSubmit = !loading && linksReady;
+          return (
+            <button onClick={handleSubmit} disabled={!canSubmit}
+              style={{
+                width:"100%",padding:14,borderRadius:14,
+                background:canSubmit?C.dark:C.muted,
+                color:"white",border:"none",fontWeight:700,fontSize:14,
+                fontFamily:FBtn,
+                cursor:canSubmit?"pointer":"not-allowed",
+                opacity:canSubmit?1:0.55,
+                transition:"background 0.15s, opacity 0.15s",
+              }}>
+              {isEdit?"Save Changes →":"Post Haul →"}
+            </button>
+          );
+        })()}
+      </div>
+    </div>
+  );
+}
+
+function MyHaulsScreen({user, onEdit}){
+  const [hauls,setHauls]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [deletingId,setDeletingId]=useState(null);
+  const [error,setError]=useState(null);
+
+  const refresh=async()=>{
+    setLoading(true);
+    setError(null);
+    const {data,error:fetchError} = await supabase
+      .from("hauls")
+      .select("*, haul_items(*)")
+      .eq("creator_id", user.id)
+      .order("created_at", {ascending:false});
+    if(fetchError) setError(fetchError.message);
+    setHauls(data||[]);
+    setLoading(false);
+  };
+
+  useEffect(()=>{ refresh(); },[user.id]);
+
+  const handleDelete = async(haul)=>{
+    if(!window.confirm(`Delete "${haul.title}"? This can't be undone.`)) return;
+    setDeletingId(haul.id);
+    setError(null);
+    try{
+      // haul_items first (in case no ON DELETE CASCADE FK), then hauls row,
+      // then the video blob. Order matters: if the haul row delete fails,
+      // we shouldn't have already pulled the video from storage.
+      const {error:itemsErr} = await supabase.from("haul_items").delete().eq("haul_id", haul.id);
+      if(itemsErr) throw itemsErr;
+      const {error:haulErr} = await supabase.from("hauls").delete().eq("id", haul.id);
+      if(haulErr) throw haulErr;
+      if(haul.video_url){
+        const p = storagePathFromVideoUrl(haul.video_url);
+        if(p){
+          // Best-effort; storage leak is survivable, row deletion already landed.
+          supabase.storage.from("haul-videos").remove([p])
+            .catch(e=>console.warn("Video cleanup failed:", e.message));
+        }
+      }
+      setHauls(prev=>prev.filter(h=>h.id!==haul.id));
+    }catch(err){
+      setError(err.message);
+    }
+    setDeletingId(null);
+  };
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+      <div style={{padding:"16px 16px 10px",flexShrink:0}}>
+        <div style={{fontSize:22,fontWeight:800,fontStyle:"italic",color:C.dark,fontFamily:FD}}>My Hauls</div>
+        <div style={{fontSize:12,color:C.muted,fontFamily:FB,marginTop:2}}>Edit or delete what you've posted.</div>
+      </div>
+      {error&&<div style={{margin:"0 16px 10px",fontSize:12,color:C.accent,fontFamily:FB,background:C.accentLight,padding:"8px 12px",borderRadius:8}}>{error}</div>}
+      <div style={{flex:1,overflowY:"auto",padding:"0 16px 100px"}}>
+        {loading
+          ? <div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"40px 0"}}>
+              <div style={{display:"flex",gap:6}}>
+                {[0,1,2].map(i=><div key={i} style={{width:8,height:8,borderRadius:"50%",background:C.accent,animation:`bounce 0.8s ease-in-out ${i*0.2}s infinite alternate`}}/>)}
+              </div>
+            </div>
+          : hauls.length===0
+          ? <div style={{textAlign:"center",padding:"48px 16px",color:C.muted,fontFamily:FB,fontSize:13,lineHeight:1.6}}>No hauls yet — tap <span style={{fontWeight:700,color:C.accent}}>+ Post Haul</span> on the Feed to get started.</div>
+          : hauls.map(h=>{
+              const itemCount = (h.haul_items||[]).length;
+              const isDeleting = deletingId===h.id;
+              return(
+                <div key={h.id} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,overflow:"hidden",marginBottom:12,opacity:isDeleting?0.5:1}}>
+                  <div style={{display:"flex",gap:12,padding:12}}>
+                    {h.video_url
+                      ? <video src={h.video_url} style={{width:80,height:80,objectFit:"cover",borderRadius:10,flexShrink:0,background:C.tag}} muted playsInline/>
+                      : <div style={{width:80,height:80,borderRadius:10,background:C.tag,display:"flex",alignItems:"center",justifyContent:"center",fontSize:26,flexShrink:0}}>🎬</div>
+                    }
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontWeight:700,fontSize:14,color:C.dark,fontFamily:FD,fontStyle:"italic",marginBottom:4,lineHeight:1.25,overflow:"hidden",textOverflow:"ellipsis",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{h.title||"Untitled"}</div>
+                      <div style={{fontSize:11,color:C.muted,fontFamily:FB}}>{itemCount} item{itemCount===1?"":"s"}</div>
+                    </div>
+                  </div>
+                  <div style={{display:"flex",borderTop:`1px solid ${C.border}`}}>
+                    <button onClick={()=>onEdit(h)} disabled={isDeleting}
+                      style={{flex:1,padding:10,border:"none",background:"none",fontSize:13,fontWeight:700,color:C.dark,fontFamily:FBtn,cursor:isDeleting?"not-allowed":"pointer"}}>Edit</button>
+                    <div style={{width:1,background:C.border}}/>
+                    <button onClick={()=>handleDelete(h)} disabled={isDeleting}
+                      style={{flex:1,padding:10,border:"none",background:"none",fontSize:13,fontWeight:700,color:C.accent,fontFamily:FBtn,cursor:isDeleting?"not-allowed":"pointer"}}>{isDeleting?"Deleting…":"Delete"}</button>
+                  </div>
+                </div>
+              );
+            })
+        }
       </div>
     </div>
   );
 }
 
 function Nav({screen,set,user}){
-  const tabs=[{id:"feed",icon:"▶",label:"Feed"},{id:"snap",icon:"✨",label:"AI Stylist"},{id:"profile",icon:"👤",label:"Profile"}];
+  const tabs=[{id:"feed",icon:"▶",label:"Feed"},{id:"snap",icon:"✨",label:"AI Stylist"},{id:"myhauls",icon:"🎥",label:"My Hauls"},{id:"profile",icon:"👤",label:"Profile"}];
   return(
     <div style={{position:"absolute",bottom:0,left:0,right:0,background:"#EDEDED",borderTop:`1px solid ${C.border}`,display:"flex",padding:"8px 0 18px"}}>
       {tabs.map(t=>(
@@ -1001,8 +1675,12 @@ function App(){
   const [user,setUser]=useState(null);
   const [authModal,setAuthModal]=useState(null); // null | "buy" | "post" | "stylist"
   const [postHaul,setPostHaul]=useState(false);
+  const [editingHaul,setEditingHaul]=useState(null);
   const [pendingAction,setPendingAction]=useState(null);
-  const showNav=(screen==="feed"||screen==="snap"||screen==="profile")&&!postHaul;
+  // Hide nav whenever a screen has its own bottom bar (DetailScreen's
+  // checkout pill, CheckoutScreen, post/edit forms) so they don't stack
+  // on top of each other.
+  const showNav=(screen==="feed"||screen==="snap"||screen==="myhauls"||screen==="profile")&&!postHaul&&!editingHaul&&!haul&&screen!=="checkout";
 
   useEffect(()=>{
     supabase.auth.getSession().then(({data:{session}})=>{
@@ -1028,6 +1706,7 @@ function App(){
 
   const handleNavChange=(tab)=>{
     if(tab==="snap"){ requireAuth("stylist",()=>setScreen("snap")); return; }
+    if(tab==="myhauls"){ requireAuth("post",()=>setScreen("myhauls")); return; }
     setScreen(tab);
   };
 
@@ -1040,10 +1719,12 @@ function App(){
       <div style={{flex:1,position:"relative",overflow:"hidden"}}>
         {screen==="feed"&&!haul&&!postHaul&&<FeedScreen onOpen={h=>{setHaul(h);}} onSnap={()=>handleNavChange("snap")} onProfile={()=>setScreen("profile")} onAuthRequired={(r,a)=>requireAuth(r,a)} onPostHaul={()=>requireAuth("post",()=>setPostHaul(true))}/>}
         {screen==="feed"&&haul&&!checkout&&!postHaul&&<DetailScreen haul={haul} onBack={()=>setHaul(null)} onCheckout={(items,total)=>requireAuth("buy",()=>{setCheckout({items,total});setScreen("checkout");})}/>}
-        {screen==="checkout"&&checkout&&<CheckoutScreen items={checkout.items} total={checkout.total} onDone={()=>{setCheckout(null);setHaul(null);setScreen("feed");}}/>}
+        {screen==="checkout"&&checkout&&<CheckoutScreen items={checkout.items} total={checkout.total} onDone={()=>{setCheckout(null);setHaul(null);setScreen("feed");}} onBack={()=>{setCheckout(null);setScreen("feed");}}/>}
         {screen==="snap"&&<SnapScreen onBack={()=>setScreen("feed")} onCheckout={(items,total)=>requireAuth("buy",()=>{setCheckout({items,total});setScreen("checkout");})}/>}
         {screen==="profile"&&<ProfileScreen user={user} onSignOut={async()=>{await supabase.auth.signOut();setUser(null);setScreen("feed");}} onUserUpdate={(u)=>setUser(u)}/> }
+        {screen==="myhauls"&&user&&!editingHaul&&<MyHaulsScreen user={user} onEdit={(h)=>setEditingHaul(h)}/>}
         {postHaul&&<PostHaulScreen user={user} onBack={()=>setPostHaul(false)} onPosted={()=>{setPostHaul(false);setScreen("feed");}}/>}
+        {editingHaul&&<PostHaulScreen user={user} editingHaul={editingHaul} onBack={()=>setEditingHaul(null)} onPosted={()=>{setEditingHaul(null);setScreen("myhauls");}}/>}
       </div>
       {showNav&&<Nav screen={screen} set={handleNavChange} user={user}/>}
       {authModal&&<AuthModal reason={authModal} onClose={()=>setAuthModal(null)} onSuccess={handleAuthSuccess}/>}
