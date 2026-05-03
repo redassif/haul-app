@@ -1479,8 +1479,11 @@ function PostHaulScreen({user, onBack, onPosted, editingHaul=null}){
                     <select value={item.length_on_creator} onChange={e=>updateItem(item.id,"length_on_creator",e.target.value)}
                       style={{width:"100%",padding:"8px 10px",borderRadius:8,border:`1px solid ${C.border}`,background:C.bg,fontSize:12,fontFamily:FB,color:C.dark,outline:"none"}}>
                       <option value="">—</option>
-                      <option value="crop">Crop</option>
-                      <option value="waist">Waist</option>
+                      {/* Crop and Waist describe hems above where a bottom
+                          starts, so they only make sense for tops/dresses/
+                          outerwear. Hide them when category=bottom. */}
+                      {item.category!=="bottom" && <option value="crop">Crop</option>}
+                      {item.category!=="bottom" && <option value="waist">Waist</option>}
                       <option value="hip">Hip</option>
                       <option value="mid_thigh">Mid-thigh</option>
                       <option value="knee">Knee</option>
